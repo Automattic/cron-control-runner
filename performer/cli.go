@@ -84,12 +84,7 @@ func (perf CLI) GetSites(hbInterval time.Duration) (Sites, error) {
 		hbInSeconds := hbInterval / time.Second
 		perf.runWpCmd([]string{"cron-control", "orchestrate", "sites", "heartbeat", fmt.Sprintf("--heartbeat-interval=%d", hbInSeconds)})
 
-		msSites, err := perf.getMultisiteSites()
-		if err != nil {
-			return msSites, err
-		}
-
-		return msSites, nil
+		return perf.getMultisiteSites()
 	}
 
 	// Mock for single site

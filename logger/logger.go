@@ -25,7 +25,7 @@ func (l Logger) Infof(format string, v ...interface{}) {
 
 // Warningf logs a message with an "WARNING:" prefix, works like Printf.
 func (l Logger) Warningf(format string, v ...interface{}) {
-	l.Printf(fmt.Sprintf("INFO: %s", format), v...)
+	l.Printf(fmt.Sprintf("WARNING: %s", format), v...)
 }
 
 // Errorf logs a message with an "WARNING:" prefix, works like Printf.

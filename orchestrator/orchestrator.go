@@ -86,17 +86,16 @@ func (orch *Orchestrator) setupWatchers() error {
 	ticker := time.NewTicker(orch.config.GetSitesInterval)
 	defer ticker.Stop()
 
-	for keepRunning := true; keepRunning; {
+	for {
 		select {
 		case <-orch.tomb.Dying():
 			orch.logger.Infof("orchestrator is shutting down, stopping watchers")
-			keepRunning = false
+			// return from the outer function, triggers defer(s) to cleanup.
+			return nil
 		case <-ticker.C:
 			watchedSites = orch.manageSiteWatchers(watchedSites)
 		}
 	}
-
-	return nil
 }
 
 // Starts up watchers for new sites, removes watchers for unlisted sites.

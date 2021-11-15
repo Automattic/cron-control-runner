@@ -1,13 +1,14 @@
 package main
 
 import (
-	"cron-control-runner/logger"
-	"cron-control-runner/metrics"
-	"cron-control-runner/orchestrator"
-	"cron-control-runner/performer"
-	"cron-control-runner/remote"
 	"flag"
+	"github.com/Automattic/cron-control-runner/logger"
+	"github.com/Automattic/cron-control-runner/metrics"
+	"github.com/Automattic/cron-control-runner/orchestrator"
+	"github.com/Automattic/cron-control-runner/performer"
+	"github.com/Automattic/cron-control-runner/remote"
 	"log"
+	"math/rand"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -28,6 +29,8 @@ type options struct {
 }
 
 func main() {
+	rand.Seed(time.Now().UnixNano())
+
 	// Listen for termination signals.
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)

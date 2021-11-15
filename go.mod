@@ -1,4 +1,4 @@
-module cron-control-runner
+module github.com/Automattic/cron-control-runner
 
 go 1.17
 

@@ -1,10 +1,11 @@
 package orchestrator
 
 import (
-	"cron-control-runner/logger"
-	"cron-control-runner/metrics"
-	"cron-control-runner/performer"
 	"fmt"
+	"github.com/Automattic/cron-control-runner/logger"
+	"github.com/Automattic/cron-control-runner/metrics"
+	"github.com/Automattic/cron-control-runner/performer"
+	"math/rand"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -124,8 +125,6 @@ func (orch *Orchestrator) manageSiteWatchers(watchedSites threadTracker) threadT
 
 	// Start up individual goroutines per each site we need to be watching.
 	for _, site := range sitesToWatch {
-		stutterWatchers(len(sitesToWatch), orch.config.GetEventsInterval)
-
 		orch.logger.Debugf("starting thread %q", site.URL)
 		closeChan := make(chan struct{})
 		watchedSites[site.URL] = closeChan
@@ -143,8 +142,26 @@ func (orch *Orchestrator) manageSiteWatchers(watchedSites threadTracker) threadT
  * B) the events that were fetched won't grow super stale while waiting to be pushed into the events queue
  */
 func (orch *Orchestrator) startSiteWatcher(site site, close chan struct{}) {
+	initialDelay := time.Duration(rand.Int63()) % orch.config.GetEventsInterval
+	orch.logger.Infof("starting watcher for site %+v, initial delay: %v", site, initialDelay)
+	select {
+	case <-close:
+		return // closed while waiting for initial delay
+	case <-time.After(initialDelay):
+		orch.logger.Debugf("initial delay has elapsed for %+v, starting to run events", site)
+	}
+
 	ticker := time.NewTicker(orch.config.GetEventsInterval)
 	defer ticker.Stop()
+
+	// initial fetch, does not wait for ticker's first firing.
+	select {
+	case <-close:
+		return // closed while waiting for semaphore
+	case orch.semGetEvents <- true:
+		// we have acquired the semaphore
+		orch.fetchSiteEvents(site, close)
+	}
 
 	for {
 		select {
@@ -264,17 +281,6 @@ func checkForSiteDiffs(watchedSites threadTracker, newSites sites) (sitesToAdd s
 	}
 
 	return sitesToAdd, sitesToRemove
-}
-
-// Evenly spread the site tickers between the configured interval.
-// Example: 10 subsites w/ 60s intervals would result in each site pausing here for 6 seconds.
-func stutterWatchers(numberOfSites int, getEventsInterval time.Duration) {
-	if numberOfSites == 1 {
-		return
-	}
-
-	stutterDuration := getEventsInterval.Seconds() / float64(numberOfSites)
-	time.Sleep(time.Duration(stutterDuration) * time.Second)
 }
 
 // Quickly send close signals to all tracked threads.

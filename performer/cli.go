@@ -1,10 +1,10 @@
 package performer
 
 import (
-	"cron-control-runner/logger"
-	"cron-control-runner/metrics"
 	"encoding/json"
 	"fmt"
+	"github.com/Automattic/cron-control-runner/logger"
+	"github.com/Automattic/cron-control-runner/metrics"
 	"io"
 	"math/rand"
 	"net/http"

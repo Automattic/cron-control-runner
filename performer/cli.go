@@ -16,6 +16,8 @@ import (
 	"github.com/yookoala/gofast"
 )
 
+var _ Performer = &CLI{}
+
 // CLI uses the CLI interface for site interactions.
 // Don't initialize directly, use NewCLI()
 type CLI struct {
@@ -23,8 +25,19 @@ type CLI struct {
 	wpPath    string
 	metrics   metrics.Manager
 	logger    logger.Logger
-	useFPM    bool
 	fpm       gofast.ClientFactory
+}
+
+func (perf *CLI) IsReady() bool {
+	if perf.fpm != nil {
+		fpmClient, err := perf.fpm()
+		if err != nil {
+			perf.logger.Errorf("cli+fpm performer not ready: %v", err)
+			return false
+		}
+		_ = fpmClient.Close()
+	}
+	return true
 }
 
 type siteInfo struct {
@@ -35,8 +48,6 @@ type siteInfo struct {
 
 // NewCLI sets up the CLI Performer w/ special initializations.
 func NewCLI(wpCLIPath string, wpPath string, fpmURL string, metrics metrics.Manager, logger logger.Logger) *CLI {
-	rand.Seed(time.Now().UnixNano())
-
 	performer := &CLI{
 		wpCLIPath: wpCLIPath,
 		wpPath:    wpPath,
@@ -53,7 +64,6 @@ func NewCLI(wpCLIPath string, wpPath string, fpmURL string, metrics metrics.Mana
 		}
 		logger.Infof("Using FPM runtime at %q", parsedURL)
 		performer.fpm = gofast.SimpleClientFactory(gofast.SimpleConnFactory(parsedURL.Scheme, parsedURL.Path))
-		performer.useFPM = true
 	}
 
 	return performer
@@ -61,7 +71,7 @@ func NewCLI(wpCLIPath string, wpPath string, fpmURL string, metrics metrics.Mana
 
 // GetSites fetches a list of sites this instance is responsible for tracking via CLI.
 // Returns an empty instance of Sites on error.
-func (perf CLI) GetSites(hbInterval time.Duration) (Sites, error) {
+func (perf *CLI) GetSites(hbInterval time.Duration) (Sites, error) {
 	sites := make(Sites)
 
 	siteInfo, err := perf.getSiteInfo()
@@ -92,7 +102,7 @@ func (perf CLI) GetSites(hbInterval time.Duration) (Sites, error) {
 	return sites, nil
 }
 
-func (perf CLI) getMultisiteSites() (Sites, error) {
+func (perf *CLI) getMultisiteSites() (Sites, error) {
 	sites := make(Sites)
 
 	raw, err := perf.runWpCmd([]string{"cron-control", "orchestrate", "sites", "list"})
@@ -115,7 +125,7 @@ func (perf CLI) getMultisiteSites() (Sites, error) {
 	return sites, nil
 }
 
-func (perf CLI) getSiteInfo() (siteInfo, error) {
+func (perf *CLI) getSiteInfo() (siteInfo, error) {
 	raw, err := perf.runWpCmd([]string{"cron-control", "orchestrate", "runner-only", "get-info", "--format=json"})
 	if err != nil {
 		return siteInfo{}, err
@@ -130,7 +140,7 @@ func (perf CLI) getSiteInfo() (siteInfo, error) {
 }
 
 // GetEvents returns a list of events for a particular site via CLI.
-func (perf CLI) GetEvents(site Site) ([]Event, error) {
+func (perf *CLI) GetEvents(site Site) ([]Event, error) {
 	var emptyEvents []Event
 
 	raw, err := perf.runWpCmd([]string{"cron-control", "orchestrate", "runner-only", "list-due-batch", fmt.Sprintf("--url=%s", site.URL), "--queue-window=0", "--format=json"})
@@ -151,7 +161,7 @@ func (perf CLI) GetEvents(site Site) ([]Event, error) {
 }
 
 // RunEvent runs an event via CLI.
-func (perf CLI) RunEvent(event Event) error {
+func (perf *CLI) RunEvent(event Event) error {
 	command := []string{"cron-control", "orchestrate", "runner-only", "run", fmt.Sprintf("--timestamp=%d", event.Timestamp),
 		fmt.Sprintf("--action=%s", event.Action), fmt.Sprintf("--instance=%s", event.Instance), fmt.Sprintf("--url=%s", event.URL)}
 
@@ -159,11 +169,11 @@ func (perf CLI) RunEvent(event Event) error {
 	return err
 }
 
-func (perf CLI) runWpCmd(command []string) (string, error) {
+func (perf *CLI) runWpCmd(command []string) (string, error) {
 	// `--quiet`` included to prevent WP-CLI commands from generating invalid JSON
 	command = append(command, "--allow-root", "--quiet", fmt.Sprintf("--path=%s", perf.wpPath))
 
-	if perf.useFPM {
+	if perf.fpm != nil {
 		t0 := time.Now()
 		result, err := perf.processCommandWithFPM(command)
 		perf.metrics.RecordFpmTiming(err == nil, time.Since(t0))
@@ -174,7 +184,7 @@ func (perf CLI) runWpCmd(command []string) (string, error) {
 	return perf.processCommand(command)
 }
 
-func (perf CLI) processCommand(command []string) (string, error) {
+func (perf *CLI) processCommand(command []string) (string, error) {
 	var stdout, stderr strings.Builder
 
 	wpCli := exec.Command(perf.wpCLIPath, command...)
@@ -217,7 +227,7 @@ func (f *fakeHTTPResponseWriter) WriteHeader(statusCode int) {
 	f.LastStatus = statusCode
 }
 
-func (perf CLI) processCommandWithFPM(subcommand []string) (string, error) {
+func (perf *CLI) processCommandWithFPM(subcommand []string) (string, error) {
 	fpmClient, err := perf.fpm()
 	if err != nil {
 		return "", err
@@ -286,7 +296,7 @@ func (perf CLI) processCommandWithFPM(subcommand []string) (string, error) {
 	return res.Buf, err
 }
 
-func (perf CLI) buildFpmQuery(subcommand []string) (url.Values, error) {
+func (perf *CLI) buildFpmQuery(subcommand []string) (url.Values, error) {
 	jsonBytes, err := json.Marshal(subcommand)
 	if err != nil {
 		return nil, err

@@ -5,17 +5,21 @@ import (
 	"time"
 )
 
+var _ Performer = &Mock{}
 // Mock is a fake performer, gives example data back. Useful for testing orchestrator changes.
 type Mock struct {
+	rotation int
 	UseSleeps   bool
 	LogCommands bool
 	RotateSites bool
 }
 
-var rotation = 0
+func (perf *Mock) IsReady() bool {
+	return true
+}
 
 // GetSites fetches a mocked list of sites.
-func (perf Mock) GetSites(_ time.Duration) (Sites, error) {
+func (perf *Mock) GetSites(_ time.Duration) (Sites, error) {
 	if perf.UseSleeps {
 		// mock remote calltime
 		time.Sleep(1 * time.Second)
@@ -33,17 +37,17 @@ func (perf Mock) GetSites(_ time.Duration) (Sites, error) {
 
 	if perf.RotateSites {
 		// Simulate sites changing. Though uncommon, good to test w/ it.
-		rotation = rotation + 1
-		if rotation > 2 {
-			rotation = 0
+		perf.rotation = perf.rotation + 1
+		if perf.rotation > 2 {
+			perf.rotation = 0
 		}
 	}
 
-	if rotation == 0 {
+	if perf.rotation == 0 {
 		slice = siteURLs[0:4]
-	} else if rotation == 1 {
+	} else if perf.rotation == 1 {
 		slice = siteURLs[3:7]
-	} else if rotation == 2 {
+	} else if perf.rotation == 2 {
 		slice = siteURLs[5:9]
 	}
 
@@ -56,7 +60,7 @@ func (perf Mock) GetSites(_ time.Duration) (Sites, error) {
 }
 
 // GetEvents returns a mocked list of events.
-func (perf Mock) GetEvents(site Site) ([]Event, error) {
+func (perf *Mock) GetEvents(site Site) ([]Event, error) {
 	if perf.UseSleeps {
 		time.Sleep(2 * time.Second)
 	}
@@ -75,7 +79,7 @@ func (perf Mock) GetEvents(site Site) ([]Event, error) {
 }
 
 // RunEvent mocks the running of an event.
-func (perf Mock) RunEvent(event Event) error {
+func (perf *Mock) RunEvent(event Event) error {
 	if perf.UseSleeps {
 		time.Sleep(5 * time.Second)
 	}

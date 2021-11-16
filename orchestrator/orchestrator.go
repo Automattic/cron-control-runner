@@ -76,6 +76,16 @@ func (orch *Orchestrator) Close() error {
  *   2) For every site we are responsible for tracking, spin up a site watcher.
  */
 func (orch *Orchestrator) setupWatchers() error {
+	for !orch.performer.IsReady() {
+		select {
+		case <-orch.tomb.Dying():
+			orch.logger.Infof("orchestrator is shutting down, performer was never ready")
+			return nil
+		case <-time.After(1*time.Second):
+			orch.logger.Debugf("testing performer readiness")
+		}
+	}
+
 	watchedSites := make(threadTracker)
 	defer closeTrackedThreads(watchedSites)
 

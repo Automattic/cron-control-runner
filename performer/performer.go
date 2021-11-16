@@ -8,6 +8,7 @@ import (
 // Performer is responsible for the real interaction w/ sites.
 // It does the event fetching and running, be that through wp cli, php-fpm, or rest apis.
 type Performer interface {
+	IsReady() bool
 	GetSites(time.Duration) (Sites, error)
 	GetEvents(site Site) ([]Event, error)
 	RunEvent(event Event) error

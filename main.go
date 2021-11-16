@@ -53,7 +53,7 @@ func main() {
 	var perf performer.Performer
 	if options.useMockData {
 		logger.Infof("Using Mock Performer")
-		perf = performer.Mock{UseSleeps: true, LogCommands: false, RotateSites: true}
+		perf = &performer.Mock{UseSleeps: true, LogCommands: false, RotateSites: true}
 	} else {
 		perf = performer.NewCLI(options.wpCLIPath, options.wpPath, options.fpmURL, metricsManager, logger)
 	}

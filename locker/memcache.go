@@ -52,64 +52,40 @@ var myHostname = []byte((func() string {
 	return hostname
 })())
 
-func (m *memcacheLocker) Lock(t Lockable) (Lock, error) {
-	item := &memcache.Item{
-		Key:        fmt.Sprintf("%s%s", m.KeyPrefix, t.LockKey()),
+type memcacheLock struct {
+	Owner   *memcacheLocker
+	Key     string
+	Expires time.Time
+}
+
+func (m *memcacheLocker) Lock(k string) (Lock, error) {
+	key := fmt.Sprintf("%s%s", m.KeyPrefix, k)
+	if err := m.Client.Add(&memcache.Item{
+		Key:        key,
 		Value:      myHostname, // we put the hostname of the lock owner as the value of the key
 		Flags:      0,
 		Expiration: int32(m.LeaseInterval.Seconds()),
-	}
-	if err := m.Client.Add(item); err == nil {
-		// success!
-		lock := &memcacheLock{
-			Lockable:  t,
-			Item:      item,
-			Owner:     m,
-			CloseChan: make(chan struct{}),
-		}
-		go lock.runKeepalive()
-		return lock, nil
+	}); err == nil {
+		return &memcacheLock{
+			Owner:   m,
+			Key:     key,
+			Expires: time.Now().Add(m.LeaseInterval - (1 * time.Second)),
+		}, nil
 	} else if err == memcache.ErrNotStored {
-		return nil, ErrAlreadyLocked
-	} else {
 		return nil, nil
+	} else {
+		return nil, fmt.Errorf("could not add key=%q: %v", key, err)
 	}
 }
 
-var _ Lock = &memcacheLock{}
-
-type memcacheLock struct {
-	Lockable  Lockable
-	Item      *memcache.Item
-	Owner     *memcacheLocker
-	CloseChan chan struct{}
-}
-
-func (m *memcacheLock) Unlock() {
-	close(m.CloseChan) // stop keepalive thread
-}
-
-func (m *memcacheLock) runKeepalive() {
-	ticker := time.NewTicker(m.Owner.LeaseInterval / 2)
-	defer ticker.Stop()
-	defer (func() {
-		if err := m.Owner.Client.Delete(m.Item.Key); err != nil && err != memcache.ErrCacheMiss {
-			m.Owner.Log.Errorf("failed to release memcache lock %q on %v: %v", m.Item.Key, m.Lockable, err)
-		}
-	})()
-	for {
-		select {
-		case <-m.CloseChan:
-			return
-		case <-ticker.C:
-			// time to extend our lease!
-			m.Owner.Log.Debugf("extending memcache lock %q on %v", m.Item.Key, m.Lockable)
-			if err := m.Owner.Client.Touch(m.Item.Key, m.Item.Expiration); err == memcache.ErrCacheMiss {
-				m.Owner.Log.Errorf("failed to extend memcache lock %q on %v: %v", m.Item.Key, m.Lockable, err)
-				return
-			}
+func (m *memcacheLock) Unlock() error {
+	// do NOT delete a lock that might have expired:
+	if time.Until(m.Expires) > (1 * time.Second) {
+		if err := m.Owner.Client.Delete(m.Key); err != nil && err != memcache.ErrCacheMiss {
+			return err
 		}
 	}
+	return nil
 }
 
 func (m *memcacheLocker) runConfigReloader() {

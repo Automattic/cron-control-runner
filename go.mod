@@ -3,6 +3,7 @@ module github.com/Automattic/cron-control-runner
 go 1.17
 
 require (
+	github.com/bradfitz/gomemcache v0.0.0-20190913173617-a41fca850d0b
 	github.com/creack/pty v1.1.17
 	github.com/howeyc/fsnotify v0.9.0
 	github.com/prometheus/client_golang v1.11.0
@@ -14,7 +15,6 @@ require (
 
 require (
 	github.com/beorn7/perks v1.0.1 // indirect
-	github.com/bradfitz/gomemcache v0.0.0-20190913173617-a41fca850d0b // indirect
 	github.com/cespare/xxhash/v2 v2.1.1 // indirect
 	github.com/golang/protobuf v1.4.3 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.1 // indirect

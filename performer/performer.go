@@ -1,6 +1,8 @@
 package performer
 
 import (
+	"crypto/sha1"
+	"encoding/base32"
 	"fmt"
 	"time"
 )
@@ -24,6 +26,11 @@ type Event struct {
 
 func (e Event) String() string {
 	return fmt.Sprintf("event(url=%q, ts=%d, action=%q, instance=%q)", e.URL, e.Timestamp, e.Action, e.Instance)
+}
+
+func (e Event) Hash() string {
+	hs := sha1.Sum([]byte(e.String()))
+	return base32.StdEncoding.EncodeToString(hs[:])
 }
 
 // A Site in a WP install.

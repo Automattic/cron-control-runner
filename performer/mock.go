@@ -6,9 +6,10 @@ import (
 )
 
 var _ Performer = &Mock{}
+
 // Mock is a fake performer, gives example data back. Useful for testing orchestrator changes.
 type Mock struct {
-	rotation int
+	rotation    int
 	UseSleeps   bool
 	LogCommands bool
 	RotateSites bool

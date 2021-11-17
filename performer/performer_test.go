@@ -2,7 +2,7 @@ package performer
 
 import "testing"
 
-func TestEvent_Hash(t *testing.T) {
+func TestEvent_LockKey(t *testing.T) {
 	type fields struct {
 		URL       string
 		Timestamp int
@@ -33,8 +33,8 @@ func TestEvent_Hash(t *testing.T) {
 				Action:    tt.fields.Action,
 				Instance:  tt.fields.Instance,
 			}
-			if got := e.Hash(); got != tt.want {
-				t.Errorf("Hash() = %v, want %v", got, tt.want)
+			if got := e.LockKey(); got != tt.want {
+				t.Errorf("LockKey() = %v, want %v", got, tt.want)
 			}
 		})
 	}

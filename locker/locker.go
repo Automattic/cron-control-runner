@@ -7,9 +7,13 @@ import (
 
 var ErrAlreadyLocked = errors.New("already locked")
 
+type Lockable interface {
+	LockKey() string
+}
+
 type Locker interface {
 	io.Closer
-	Lock(id string) (Lock, error)
+	Lock(Lockable) (Lock, error)
 }
 
 type Lock interface {

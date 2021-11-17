@@ -256,7 +256,7 @@ func (orch *Orchestrator) startEventRunner(workerID string, close chan struct{},
 			var lock locker.Lock
 			var err error
 			if orch.locker != nil {
-				if lock, err = orch.locker.Lock(runnableEvent.Hash()); err == nil {
+				if lock, err = orch.locker.Lock(runnableEvent); err == nil {
 					if lock == nil {
 						orch.metrics.RecordLockEvent(runnableEvent.URL, "not_locked")
 					} else {

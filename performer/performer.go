@@ -28,7 +28,7 @@ func (e Event) String() string {
 	return fmt.Sprintf("event(url=%q, ts=%d, action=%q, instance=%q)", e.URL, e.Timestamp, e.Action, e.Instance)
 }
 
-func (e Event) Hash() string {
+func (e Event) LockKey() string {
 	hs := sha1.Sum([]byte(e.String()))
 	return base32.StdEncoding.EncodeToString(hs[:])
 }

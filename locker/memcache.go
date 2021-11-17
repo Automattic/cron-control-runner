@@ -52,9 +52,9 @@ var myHostname = []byte((func() string {
 	return hostname
 })())
 
-func (m *memcacheLocker) Lock(id string) (Lock, error) {
+func (m *memcacheLocker) Lock(t Lockable) (Lock, error) {
 	item := &memcache.Item{
-		Key:        fmt.Sprintf("%s%s", m.KeyPrefix, id),
+		Key:        fmt.Sprintf("%s%s", m.KeyPrefix, t.LockKey()),
 		Value:      myHostname, // we put the hostname of the lock owner as the value of the key
 		Flags:      0,
 		Expiration: int32(m.LeaseInterval.Seconds()),
@@ -62,6 +62,7 @@ func (m *memcacheLocker) Lock(id string) (Lock, error) {
 	if err := m.Client.Add(item); err == nil {
 		// success!
 		lock := &memcacheLock{
+			Lockable:  t,
 			Item:      item,
 			Owner:     m,
 			CloseChan: make(chan struct{}),
@@ -78,6 +79,7 @@ func (m *memcacheLocker) Lock(id string) (Lock, error) {
 var _ Lock = &memcacheLock{}
 
 type memcacheLock struct {
+	Lockable  Lockable
 	Item      *memcache.Item
 	Owner     *memcacheLocker
 	CloseChan chan struct{}
@@ -92,7 +94,7 @@ func (m *memcacheLock) runKeepalive() {
 	defer ticker.Stop()
 	defer (func() {
 		if err := m.Owner.Client.Delete(m.Item.Key); err != nil && err != memcache.ErrCacheMiss {
-			m.Owner.Log.Errorf("failed to release memcache lock on %q: %v", m.Item.Key, err)
+			m.Owner.Log.Errorf("failed to release memcache lock %q on %v: %v", m.Item.Key, m.Lockable, err)
 		}
 	})()
 	for {
@@ -101,9 +103,9 @@ func (m *memcacheLock) runKeepalive() {
 			return
 		case <-ticker.C:
 			// time to extend our lease!
-			m.Owner.Log.Debugf("extending memcache lease on %q", m.Item.Key)
+			m.Owner.Log.Debugf("extending memcache lock %q on %v", m.Item.Key, m.Lockable)
 			if err := m.Owner.Client.Touch(m.Item.Key, m.Item.Expiration); err == memcache.ErrCacheMiss {
-				m.Owner.Log.Errorf("failed to extend memcache lease on %q: %v", m.Item.Key, err)
+				m.Owner.Log.Errorf("failed to extend memcache lock %q on %v: %v", m.Item.Key, m.Lockable, err)
 				return
 			}
 		}

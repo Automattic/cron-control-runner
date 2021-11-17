@@ -10,6 +10,12 @@ type Mock struct {
 	Log bool
 }
 
+func (m Mock) RecordLockEvent(url string, status string) {
+	if m.Log {
+		log.Printf("metrics: RecordLockEvent(url: %s, status: %s)", url, status)
+	}
+}
+
 // RecordGetSites tracks successful performer.GetSites() calls.
 func (m Mock) RecordGetSites(isSuccess bool, elapsed time.Duration) {
 	if m.Log {

@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"fmt"
+	"github.com/Automattic/cron-control-runner/locker"
 	"github.com/Automattic/cron-control-runner/logger"
 	"github.com/Automattic/cron-control-runner/metrics"
 	"github.com/Automattic/cron-control-runner/performer"
@@ -21,6 +22,7 @@ type Orchestrator struct {
 	performer        performer.Performer
 	metrics          metrics.Manager
 	logger           logger.Logger
+	locker           locker.Locker
 	tomb             tomb.Tomb
 	semGetEvents     chan bool
 	busyEventWorkers int32
@@ -43,7 +45,7 @@ type event = performer.Event
 type threadTracker map[string]chan struct{}
 
 // New sets up a new orchestrator based on the passed configurations
-func New(perf performer.Performer, metrics metrics.Manager, logger logger.Logger, config Config) *Orchestrator {
+func New(perf performer.Performer, metrics metrics.Manager, logger logger.Logger, locker locker.Locker, config Config) *Orchestrator {
 	config = sanitizeConfig(config)
 	orchestrator := &Orchestrator{
 		events:       make(chan event, config.EventBacklog),
@@ -51,6 +53,7 @@ func New(perf performer.Performer, metrics metrics.Manager, logger logger.Logger
 		performer:    perf,
 		metrics:      metrics,
 		logger:       logger,
+		locker:       locker,
 		semGetEvents: make(chan bool, config.GetEventsParallelism),
 	}
 
@@ -81,7 +84,7 @@ func (orch *Orchestrator) setupWatchers() error {
 		case <-orch.tomb.Dying():
 			orch.logger.Infof("orchestrator is shutting down, performer was never ready")
 			return nil
-		case <-time.After(1*time.Second):
+		case <-time.After(1 * time.Second):
 			orch.logger.Debugf("testing performer readiness")
 		}
 	}
@@ -247,29 +250,51 @@ func (orch *Orchestrator) startEventRunner(workerID string, close chan struct{},
 			select {
 			case <-close:
 				return // higher priority close in case both channels were available
-			default:
-				// Worker is now busy.
-				orch.metrics.RecordRunWorkerStats(atomic.AddInt32(&(orch.busyEventWorkers), 1), int32(orch.config.NumRunWorkers))
-
-				t0 := time.Now()
-				err := orch.performer.RunEvent(runnableEvent)
-				duration := time.Since(t0)
-
-				if err != nil {
-					orch.logger.Errorf("runEvents: %s could not run event %v after %v; err=%v", workerID, runnableEvent, duration, err)
-					orch.metrics.RecordRunEvent(false, duration, runnableEvent.URL, "error")
-				} else {
-					if duration > time.Second*30 {
-						orch.logger.Warningf("runEvents: %s ran job %v for a long time (%v)", workerID, runnableEvent, duration)
-					} else {
-						orch.logger.Debugf("runEvents: %s finished job %v after %v", workerID, runnableEvent, duration)
-					}
-					orch.metrics.RecordRunEvent(true, duration, runnableEvent.URL, "ok")
-				}
-
-				// Worker is back to idle.
-				orch.metrics.RecordRunWorkerStats(atomic.AddInt32(&(orch.busyEventWorkers), -1), int32(orch.config.NumRunWorkers))
+			default: // noop
 			}
+
+			var lock locker.Lock
+			var err error
+			if orch.locker != nil {
+				if lock, err = orch.locker.Lock(runnableEvent); err == nil {
+					if lock == nil {
+						orch.metrics.RecordLockEvent(runnableEvent.URL, "not_locked")
+					} else {
+						orch.metrics.RecordLockEvent(runnableEvent.URL, "locked")
+					}
+				} else if err == locker.ErrAlreadyLocked {
+					orch.metrics.RecordLockEvent(runnableEvent.URL, "already_locked")
+				} else {
+					orch.logger.Errorf("error locking event %v: %v", runnableEvent, err)
+					orch.metrics.RecordLockEvent(runnableEvent.URL, "error")
+				}
+			}
+
+			// Worker is now busy.
+			orch.metrics.RecordRunWorkerStats(atomic.AddInt32(&(orch.busyEventWorkers), 1), int32(orch.config.NumRunWorkers))
+
+			t0 := time.Now()
+			err = orch.performer.RunEvent(runnableEvent)
+			duration := time.Since(t0)
+
+			if lock != nil {
+				lock.Unlock()
+			}
+
+			if err != nil {
+				orch.logger.Errorf("runEvents: %s could not run event %v after %v; err=%v", workerID, runnableEvent, duration, err)
+				orch.metrics.RecordRunEvent(false, duration, runnableEvent.URL, "error")
+			} else {
+				if duration > time.Second*30 {
+					orch.logger.Warningf("runEvents: %s ran job %v for a long time (%v)", workerID, runnableEvent, duration)
+				} else {
+					orch.logger.Debugf("runEvents: %s finished job %v after %v", workerID, runnableEvent, duration)
+				}
+				orch.metrics.RecordRunEvent(true, duration, runnableEvent.URL, "ok")
+			}
+
+			// Worker is back to idle.
+			orch.metrics.RecordRunWorkerStats(atomic.AddInt32(&(orch.busyEventWorkers), -1), int32(orch.config.NumRunWorkers))
 		}
 	}
 }

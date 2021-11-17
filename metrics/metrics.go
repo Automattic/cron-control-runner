@@ -9,6 +9,7 @@ type Manager interface {
 	RecordGetSites(isSuccess bool, elapsed time.Duration)
 	RecordGetSiteEvents(isSuccess bool, elapsed time.Duration, siteURL string, numEvents int)
 	RecordRunEvent(isSuccess bool, elapsed time.Duration, siteURL string, reason string)
+	RecordLockEvent(url string, status string)
 	RecordRunWorkerStats(currBusy int32, max int32)
 	RecordFpmTiming(isSuccess bool, elapsed time.Duration)
 }

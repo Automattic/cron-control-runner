@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"github.com/Automattic/cron-control-runner/locker"
 	"github.com/Automattic/cron-control-runner/logger"
 	"github.com/Automattic/cron-control-runner/metrics"
 	"github.com/Automattic/cron-control-runner/orchestrator"
@@ -17,15 +18,19 @@ import (
 )
 
 type options struct {
-	metricsAddress     string
-	useMockData        bool
-	debug              bool
-	wpCLIPath          string
-	wpPath             string
-	fpmURL             string
-	orchestratorConfig orchestrator.Config
-	remoteToken        string
-	useWebsockets      bool
+	metricsAddress        string
+	useMockData           bool
+	debug                 bool
+	wpCLIPath             string
+	wpPath                string
+	fpmURL                string
+	orchestratorConfig    orchestrator.Config
+	remoteToken           string
+	useWebsockets         bool
+	useLocker             bool
+	dataConfigPath        string
+	lockerRefreshInterval time.Duration
+	lockerLeaseInterval   time.Duration
 }
 
 func main() {
@@ -58,8 +63,15 @@ func main() {
 		perf = performer.NewCLI(options.wpCLIPath, options.wpPath, options.fpmURL, metricsManager, logger)
 	}
 
+	// Setup the locker, if any:
+	var lock locker.Locker
+	if options.useLocker {
+		lock = locker.NewMemcache(logger, "__ccr:lock:", options.dataConfigPath, options.lockerLeaseInterval, options.lockerRefreshInterval)
+		defer lock.Close()
+	}
+
 	// Launch the orchestrator.
-	orch := orchestrator.New(perf, metricsManager, logger, options.orchestratorConfig)
+	orch := orchestrator.New(perf, metricsManager, logger, lock, options.orchestratorConfig)
 	defer orch.Close()
 
 	// Setup the remote CLI module if enabled.
@@ -92,14 +104,24 @@ func getCliOptions() options {
 			NumRunWorkers:        8,
 			EventBacklog:         0,
 		},
-		remoteToken:   "",
-		useWebsockets: false,
+		remoteToken:           "",
+		useWebsockets:         false,
+		useLocker:             false,
+		dataConfigPath:        "/etc/wpvip-data-config/config.json",
+		lockerRefreshInterval: 10 * time.Second,
+		lockerLeaseInterval:   30 * time.Second,
 	}
 
 	// General purpose
 	flag.StringVar(&(options.metricsAddress), "prom-metrics-address", options.metricsAddress, "Listen address for prometheus metrics (e.g. :4444); if set, can scrape http://:4444/metrics.")
 	flag.BoolVar(&(options.useMockData), "use-mock-data", options.useMockData, "use the mock performer for testing")
 	flag.BoolVar(&(options.debug), "debug", options.debug, "enables debug mode (extra logging)")
+
+	// Locker
+	flag.BoolVar(&(options.useLocker), "use-locker", options.useLocker, "use the memcached locker")
+	flag.StringVar(&(options.dataConfigPath), "data-config-path", options.dataConfigPath, "Data-config path for locker memcache client configuration")
+	flag.DurationVar(&(options.lockerRefreshInterval), "locker-refresh-interval", options.lockerRefreshInterval, "Refresh interval for locker config")
+	flag.DurationVar(&(options.lockerLeaseInterval), "locker-lease-interval", options.lockerLeaseInterval, "Lease interval for locks")
 
 	// Used for the Performer
 	flag.StringVar(&(options.wpCLIPath), "wp-cli-path", options.wpCLIPath, "path to WP-CLI binary")

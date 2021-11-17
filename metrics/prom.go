@@ -10,6 +10,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
+var _ Manager = &Prom{}
+
 // Prom tracks metrics via prometheus
 // Initialize with NewProm()
 type Prom struct {
@@ -17,6 +19,7 @@ type Prom struct {
 	histGetSiteEventsLatency      *prometheus.HistogramVec
 	ctrGetSiteEventsReceivedTotal *prometheus.CounterVec
 	histRunEventLatency           *prometheus.HistogramVec
+	ctrLockerEventsTotal          *prometheus.CounterVec
 	histWpcliStatMaxRSS           *prometheus.HistogramVec
 	histWpcliStatCPUTime          *prometheus.HistogramVec
 	histFpmCallDurationSeconds    *prometheus.HistogramVec
@@ -67,6 +70,16 @@ func (p *Prom) RecordRunEvent(isSuccess bool, elapsed time.Duration, siteURL str
 		"site_url": siteURL,
 		"reason":   reason,
 	})).Observe(elapsed.Seconds())
+}
+
+func (p *Prom) RecordLockEvent(siteURL string, status string) {
+	if siteURL == "" {
+		siteURL = "unknown"
+	}
+	p.ctrLockerEventsTotal.With(prometheus.Labels{
+		"site_url": siteURL,
+		"status":   status,
+	}).Inc()
 }
 
 // RecordRunWorkerStats keeps track of runWorker activity.
@@ -129,6 +142,13 @@ func (p *Prom) initializeMetrics() {
 		Help:      "Histogram of time taken to run events",
 		Buckets:   []float64{.1, .25, .5, 1, 2.5, 5, 10, 30, 60, 90},
 	}, []string{"site_url", "status", "reason"})
+
+	p.ctrLockerEventsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: metricNamespace,
+		Subsystem: "locker",
+		Name:      "events_total",
+		Help:      "Number of events locked",
+	}, []string{"site_url"})
 
 	p.histWpcliStatMaxRSS = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: metricNamespace,

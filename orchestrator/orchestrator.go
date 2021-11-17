@@ -256,10 +256,20 @@ func (orch *Orchestrator) startEventRunner(workerID string, close chan struct{},
 			var lock locker.Lock
 			var err error
 			if orch.locker != nil {
-				if lock, err = orch.locker.Lock(runnableEvent.Hash()); err != nil {
-					orch.logger.Warningf("error locking event %v: %v", runnableEvent, err)
+				if lock, err = orch.locker.Lock(runnableEvent.Hash()); err == nil {
+					if lock == nil {
+						orch.metrics.RecordLockEvent(runnableEvent.URL, "not_locked")
+					} else {
+						orch.metrics.RecordLockEvent(runnableEvent.URL, "locked")
+					}
+				} else if err == locker.ErrAlreadyLocked {
+					orch.metrics.RecordLockEvent(runnableEvent.URL, "already_locked")
+				} else {
+					orch.logger.Errorf("error locking event %v: %v", runnableEvent, err)
+					orch.metrics.RecordLockEvent(runnableEvent.URL, "error")
 				}
 			}
+
 			// Worker is now busy.
 			orch.metrics.RecordRunWorkerStats(atomic.AddInt32(&(orch.busyEventWorkers), 1), int32(orch.config.NumRunWorkers))
 

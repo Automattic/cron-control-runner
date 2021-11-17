@@ -30,7 +30,6 @@ type options struct {
 	useLocker             bool
 	dataConfigPath        string
 	lockerRefreshInterval time.Duration
-	lockerLeaseInterval   time.Duration
 }
 
 func main() {
@@ -66,7 +65,7 @@ func main() {
 	// Setup the locker, if any:
 	var lock locker.Locker
 	if options.useLocker {
-		lock = locker.NewMemcache(logger, "__ccr:lock:", options.dataConfigPath, options.lockerLeaseInterval, options.lockerRefreshInterval)
+		lock = locker.NewMemcache(logger, "__ccr:lock:", options.dataConfigPath, 2*options.orchestratorConfig.GetEventsInterval, options.lockerRefreshInterval)
 		defer lock.Close()
 	}
 
@@ -109,7 +108,6 @@ func getCliOptions() options {
 		useLocker:             false,
 		dataConfigPath:        "/etc/wpvip-data-config/config.json",
 		lockerRefreshInterval: 10 * time.Second,
-		lockerLeaseInterval:   30 * time.Second,
 	}
 
 	// General purpose
@@ -121,7 +119,6 @@ func getCliOptions() options {
 	flag.BoolVar(&(options.useLocker), "use-locker", options.useLocker, "use the memcached locker")
 	flag.StringVar(&(options.dataConfigPath), "data-config-path", options.dataConfigPath, "Data-config path for locker memcache client configuration")
 	flag.DurationVar(&(options.lockerRefreshInterval), "locker-refresh-interval", options.lockerRefreshInterval, "Refresh interval for locker config")
-	flag.DurationVar(&(options.lockerLeaseInterval), "locker-lease-interval", options.lockerLeaseInterval, "Lease interval for locks")
 
 	// Used for the Performer
 	flag.StringVar(&(options.wpCLIPath), "wp-cli-path", options.wpCLIPath, "path to WP-CLI binary")

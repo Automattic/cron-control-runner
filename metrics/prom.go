@@ -72,13 +72,9 @@ func (p *Prom) RecordRunEvent(isSuccess bool, elapsed time.Duration, siteURL str
 	})).Observe(elapsed.Seconds())
 }
 
-func (p *Prom) RecordLockEvent(siteURL string, status string) {
-	if siteURL == "" {
-		siteURL = "unknown"
-	}
+func (p *Prom) RecordLockEvent(status string) {
 	p.ctrLockerEventsTotal.With(prometheus.Labels{
-		"site_url": siteURL,
-		"status":   status,
+		"status": status,
 	}).Inc()
 }
 
@@ -148,7 +144,7 @@ func (p *Prom) initializeMetrics() {
 		Subsystem: "locker",
 		Name:      "events_total",
 		Help:      "Number of events locked",
-	}, []string{"site_url"})
+	}, []string{"status"})
 
 	p.histWpcliStatMaxRSS = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: metricNamespace,

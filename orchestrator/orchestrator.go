@@ -256,17 +256,17 @@ func (orch *Orchestrator) startEventRunner(workerID string, close chan struct{},
 			var lock locker.Lock
 			var err error
 			if orch.locker != nil {
-				if lock, err = orch.locker.Lock(runnableEvent); err == nil {
-					if lock == nil {
-						orch.metrics.RecordLockEvent(runnableEvent.URL, "not_locked")
-					} else {
-						orch.metrics.RecordLockEvent(runnableEvent.URL, "locked")
-					}
-				} else if err == locker.ErrAlreadyLocked {
-					orch.metrics.RecordLockEvent(runnableEvent.URL, "already_locked")
+				if lock, err = orch.locker.Lock(runnableEvent.LockKey()); err != nil {
+					// if there is an error, we continue as if it is not locked:
+					orch.logger.Warningf("error locking event %v: %v", runnableEvent, err)
+					orch.metrics.RecordLockEvent("error")
+				} else if lock == nil {
+					// already locked, move on:
+					orch.metrics.RecordLockEvent("already_locked")
+					continue
 				} else {
-					orch.logger.Errorf("error locking event %v: %v", runnableEvent, err)
-					orch.metrics.RecordLockEvent(runnableEvent.URL, "error")
+					// we got a lock:
+					orch.metrics.RecordLockEvent("locked")
 				}
 			}
 
@@ -278,7 +278,9 @@ func (orch *Orchestrator) startEventRunner(workerID string, close chan struct{},
 			duration := time.Since(t0)
 
 			if lock != nil {
-				lock.Unlock()
+				if unlockErr := lock.Unlock(); unlockErr != nil {
+					orch.logger.Warningf("failed to unlock event %v: %v", runnableEvent, unlockErr)
+				}
 			}
 
 			if err != nil {

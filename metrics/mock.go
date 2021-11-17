@@ -10,9 +10,9 @@ type Mock struct {
 	Log bool
 }
 
-func (m Mock) RecordLockEvent(url string, status string) {
+func (m Mock) RecordLockEvent(status string) {
 	if m.Log {
-		log.Printf("metrics: RecordLockEvent(url: %s, status: %s)", url, status)
+		log.Printf("metrics: RecordLockEvent(status: %s)", status)
 	}
 }
 

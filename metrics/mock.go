@@ -5,9 +5,16 @@ import (
 	"time"
 )
 
+var _ Manager = Mock{}
 // Mock is a mock implementation of a Metrics Manager.
 type Mock struct {
 	Log bool
+}
+
+func (m Mock) RecordSiteEventLag(url string, oldestEventTs time.Time) {
+	if m.Log {
+		log.Printf("metrics: RecordSiteEventLag(url: %s, oldestEventTs: %v)", url, oldestEventTs)
+	}
 }
 
 func (m Mock) RecordLockEvent(status string) {

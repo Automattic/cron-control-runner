@@ -2,6 +2,7 @@ package performer
 
 import (
 	"log"
+	"math/rand"
 	"time"
 )
 
@@ -71,11 +72,11 @@ func (perf *Mock) GetEvents(site Site) ([]Event, error) {
 	}
 
 	return []Event{
-		{Action: "action1", URL: site.URL},
-		{Action: "action2", URL: site.URL},
-		{Action: "action3", URL: site.URL},
-		{Action: "action4", URL: site.URL},
-		{Action: "action5", URL: site.URL},
+		{Action: "action1", URL: site.URL, Timestamp: int(time.Now().Unix() - rand.Int63n(12))},
+		{Action: "action2", URL: site.URL, Timestamp: int(time.Now().Unix() - rand.Int63n(12))},
+		{Action: "action3", URL: site.URL, Timestamp: int(time.Now().Unix() - rand.Int63n(12))},
+		{Action: "action4", URL: site.URL, Timestamp: int(time.Now().Unix() - rand.Int63n(12))},
+		{Action: "action5", URL: site.URL, Timestamp: int(time.Now().Unix() - rand.Int63n(12))},
 	}, nil
 }
 

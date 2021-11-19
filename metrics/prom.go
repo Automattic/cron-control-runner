@@ -19,6 +19,8 @@ type Prom struct {
 	histGetSiteEventsLatency      *prometheus.HistogramVec
 	ctrGetSiteEventsReceivedTotal *prometheus.CounterVec
 	histRunEventLatency           *prometheus.HistogramVec
+	gaugeOldestEventTs            *prometheus.GaugeVec
+	gaugeOldestEventAge           *prometheus.GaugeVec
 	ctrLockerEventsTotal          *prometheus.CounterVec
 	histWpcliStatMaxRSS           *prometheus.HistogramVec
 	histWpcliStatCPUTime          *prometheus.HistogramVec
@@ -103,8 +105,21 @@ func (p *Prom) RecordFpmTiming(isSuccess bool, elapsed time.Duration) {
 	p.histFpmCallDurationSeconds.With(labels).Observe(elapsed.Seconds())
 }
 
+func (p *Prom) RecordSiteEventLag(url string, oldestEventTs time.Time) {
+	if url == "" {
+		url = "unknown"
+	}
+	ageMs := time.Since(oldestEventTs).Milliseconds()
+	if ageMs < 0 {
+		ageMs = 0
+	}
+	labels := prometheus.Labels{"site_url": url}
+	p.gaugeOldestEventTs.With(labels).Set(float64(oldestEventTs.Unix()))
+	p.gaugeOldestEventAge.With(labels).Set(float64(ageMs))
+}
+
 func (p *Prom) initializeMetrics() {
-	var metricNamespace = "cron_control_runner"
+	const metricNamespace = "cron_control_runner"
 
 	log.Printf("Initializing metrics")
 
@@ -130,6 +145,20 @@ func (p *Prom) initializeMetrics() {
 		Name:      "events_received_total",
 		Help:      "Number of events retrieved by site",
 	}, []string{"site"})
+
+	p.gaugeOldestEventTs = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: metricNamespace,
+		Subsystem: "get_site_events",
+		Name:      "oldest_event_timestamp",
+		Help:      "Timestamp of the oldest event received in the last batch for this site",
+	}, []string{"site_url"})
+
+	p.gaugeOldestEventAge = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: metricNamespace,
+		Subsystem: "get_site_events",
+		Name:      "oldest_event_age_ms",
+		Help:      "Age in milliseconds of the oldest event received in the last batch for this site",
+	}, []string{"site_url"})
 
 	p.histRunEventLatency = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: metricNamespace,

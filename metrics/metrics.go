@@ -12,4 +12,5 @@ type Manager interface {
 	RecordLockEvent(status string)
 	RecordRunWorkerStats(currBusy int32, max int32)
 	RecordFpmTiming(isSuccess bool, elapsed time.Duration)
+	RecordSiteEventLag(url string, oldestEventTs time.Time)
 }

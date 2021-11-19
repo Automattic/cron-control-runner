@@ -33,6 +33,10 @@ func (e Event) LockKey() string {
 	return base32.StdEncoding.EncodeToString(hs[:])
 }
 
+func (e Event) Time() time.Time {
+	return time.Unix(int64(e.Timestamp), 0)
+}
+
 // A Site in a WP install.
 type Site struct {
 	URL string `json:"url"`

@@ -206,13 +206,21 @@ func (orch *Orchestrator) fetchSiteEvents(site site, close chan struct{}) {
 
 	orch.metrics.RecordGetSiteEvents(err == nil, time.Since(t0), site.URL, len(events))
 
+	minEventTime := time.Now()
 	for _, event := range events {
+		if et := event.Time(); et.Before(minEventTime) {
+			minEventTime = et
+		}
 		select {
 		case <-close:
 			return // closed while waiting for space in event queue
 		case orch.events <- event:
 			continue // noop, event is sent!
 		}
+	}
+
+	if err == nil {
+		orch.metrics.RecordSiteEventLag(site.URL, minEventTime)
 	}
 }
 

@@ -200,10 +200,8 @@ func (orch *Orchestrator) fetchSiteEvents(site site, close chan struct{}) {
 		<-orch.semGetEvents
 	})()
 
-	var lock locker.Lock
 	if orch.locker != nil {
-		var err error
-		if lock, err = orch.locker.Lock(site.LockKey(), orch.config.GetEventsInterval); err != nil {
+		if lock, err := orch.locker.Lock(site.LockKey(), orch.config.GetEventsInterval); err != nil {
 			// if there is an error, we continue as if it is not locked:
 			orch.logger.Warningf("error locking site %s: %v", site.URL, err)
 			orch.metrics.RecordLockEvent(LockGroupGetEvents, "error")

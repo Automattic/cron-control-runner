@@ -65,7 +65,7 @@ func main() {
 	// Setup the locker, if any:
 	var lock locker.Locker
 	if options.useLocker {
-		lock = locker.NewMemcache(logger, "__ccr:lock:", options.dataConfigPath, 2*options.orchestratorConfig.GetEventsInterval, options.lockerRefreshInterval)
+		lock = locker.NewMemcache(logger, "__ccr:lock:", options.dataConfigPath, options.lockerRefreshInterval)
 		defer lock.Close()
 	}
 

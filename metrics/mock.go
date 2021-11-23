@@ -6,6 +6,7 @@ import (
 )
 
 var _ Manager = Mock{}
+
 // Mock is a mock implementation of a Metrics Manager.
 type Mock struct {
 	Log bool

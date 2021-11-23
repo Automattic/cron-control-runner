@@ -76,7 +76,7 @@ func (p *Prom) RecordRunEvent(isSuccess bool, elapsed time.Duration, siteURL str
 
 func (p *Prom) RecordLockEvent(group, status string) {
 	p.ctrLockerEventsTotal.With(prometheus.Labels{
-		"group": group,
+		"group":  group,
 		"status": status,
 	}).Inc()
 }

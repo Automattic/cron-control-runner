@@ -6,6 +6,7 @@ import (
 	"github.com/Automattic/cron-control-runner/logger"
 	"github.com/Automattic/cron-control-runner/metrics"
 	"github.com/Automattic/cron-control-runner/performer"
+	"github.com/lthibault/jitterbug/v2"
 	"math/rand"
 	"sync"
 	"sync/atomic"
@@ -43,6 +44,9 @@ type site = performer.Site
 type event = performer.Event
 
 type threadTracker map[string]chan struct{}
+
+const LockGroupRunEvent = "run-event"
+const LockGroupGetEvents = "get-events"
 
 // New sets up a new orchestrator based on the passed configurations
 func New(perf performer.Performer, metrics metrics.Manager, logger logger.Logger, locker locker.Locker, config Config) *Orchestrator {
@@ -163,7 +167,7 @@ func (orch *Orchestrator) startSiteWatcher(site site, close chan struct{}) {
 		orch.logger.Debugf("initial delay has elapsed for %+v, starting to run events", site)
 	}
 
-	ticker := time.NewTicker(orch.config.GetEventsInterval)
+	ticker := jitterbug.New(orch.config.GetEventsInterval, &jitterbug.Norm{Stdev: orch.config.GetEventsInterval / 20})
 	defer ticker.Stop()
 
 	// initial fetch, does not wait for ticker's first firing.
@@ -195,6 +199,25 @@ func (orch *Orchestrator) fetchSiteEvents(site site, close chan struct{}) {
 	defer (func() {
 		<-orch.semGetEvents
 	})()
+
+	var lock locker.Lock
+	if orch.locker != nil {
+		var err error
+		if lock, err = orch.locker.Lock(site.LockKey(), orch.config.GetEventsInterval); err != nil {
+			// if there is an error, we continue as if it is not locked:
+			orch.logger.Warningf("error locking site %s: %v", site.URL, err)
+			orch.metrics.RecordLockEvent(LockGroupGetEvents, "error")
+		} else if lock == nil {
+			// already locked, move on:
+			orch.logger.Debugf("getEvents: skipping site %s due to lock", site.URL)
+			orch.metrics.RecordLockEvent(LockGroupGetEvents, "already_locked")
+			return
+		} else {
+			// we got a lock:
+			orch.metrics.RecordLockEvent(LockGroupGetEvents, "locked")
+			// NOTE: we never unlock it. we let it expire and some other runner can find it unlocked.
+		}
+	}
 
 	t0 := time.Now()
 	events, err := orch.performer.GetEvents(site)
@@ -246,9 +269,6 @@ func (orch *Orchestrator) setupRunners() error {
 	return nil
 }
 
-const LockGroupRunEvent = "run-event"
-const LockGroupGetEvents = "get-events"
-
 func (orch *Orchestrator) startEventRunner(workerID string, close chan struct{}, wg *sync.WaitGroup) {
 	defer wg.Done()
 	defer orch.logger.Infof("shutdown %q gracefully", workerID)
@@ -267,7 +287,7 @@ func (orch *Orchestrator) startEventRunner(workerID string, close chan struct{},
 			var lock locker.Lock
 			var err error
 			if orch.locker != nil {
-				if lock, err = orch.locker.Lock(runnableEvent.LockKey()); err != nil {
+				if lock, err = orch.locker.Lock(runnableEvent.LockKey(), 2*orch.config.GetEventsInterval); err != nil {
 					// if there is an error, we continue as if it is not locked:
 					orch.logger.Warningf("error locking event %v: %v", runnableEvent, err)
 					orch.metrics.RecordLockEvent(LockGroupRunEvent, "error")

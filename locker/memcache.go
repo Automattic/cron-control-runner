@@ -18,18 +18,16 @@ type memcacheLocker struct {
 	ConfigPath      string
 	ServerList      *memcache.ServerList
 	Client          *memcache.Client
-	LeaseInterval   time.Duration
 	RefreshInterval time.Duration
 	CloseChan       chan struct{}
 }
 
-func NewMemcache(log logger.Logger, keyPrefix, configPath string, leaseInterval, refreshInterval time.Duration) Locker {
+func NewMemcache(log logger.Logger, keyPrefix, configPath string, refreshInterval time.Duration) Locker {
 	res := &memcacheLocker{
 		KeyPrefix:       keyPrefix,
 		Log:             log,
 		ConfigPath:      configPath,
 		ServerList:      &memcache.ServerList{},
-		LeaseInterval:   leaseInterval,
 		RefreshInterval: refreshInterval,
 		CloseChan:       make(chan struct{}),
 	}
@@ -58,18 +56,22 @@ type memcacheLock struct {
 	Expires time.Time
 }
 
-func (m *memcacheLocker) Lock(k string) (Lock, error) {
+func (m *memcacheLocker) Lock(k string, ttl time.Duration) (Lock, error) {
 	key := fmt.Sprintf("%s%s", m.KeyPrefix, k)
+	ttl = ttl.Truncate(time.Second)
+	if ttl < time.Second {
+		ttl = time.Second
+	}
 	if err := m.Client.Add(&memcache.Item{
 		Key:        key,
 		Value:      myHostname, // we put the hostname of the lock owner as the value of the key
 		Flags:      0,
-		Expiration: int32(m.LeaseInterval.Seconds()),
+		Expiration: int32(ttl / time.Second),
 	}); err == nil {
 		return &memcacheLock{
 			Owner:   m,
 			Key:     key,
-			Expires: time.Now().Add(m.LeaseInterval - (1 * time.Second)),
+			Expires: time.Now().Add(ttl),
 		}, nil
 	} else if err == memcache.ErrNotStored {
 		return nil, nil
@@ -79,8 +81,8 @@ func (m *memcacheLocker) Lock(k string) (Lock, error) {
 }
 
 func (m *memcacheLock) Unlock() error {
-	// do NOT delete a lock that might have expired:
-	if time.Until(m.Expires) > (1 * time.Second) {
+	// do NOT delete a lock that might have expired (i.e. rounding errors from clock skew):
+	if time.Until(m.Expires) >= time.Second {
 		if err := m.Owner.Client.Delete(m.Key); err != nil && err != memcache.ErrCacheMiss {
 			return err
 		}

@@ -74,8 +74,9 @@ func (p *Prom) RecordRunEvent(isSuccess bool, elapsed time.Duration, siteURL str
 	})).Observe(elapsed.Seconds())
 }
 
-func (p *Prom) RecordLockEvent(status string) {
+func (p *Prom) RecordLockEvent(group, status string) {
 	p.ctrLockerEventsTotal.With(prometheus.Labels{
+		"group": group,
 		"status": status,
 	}).Inc()
 }
@@ -173,7 +174,7 @@ func (p *Prom) initializeMetrics() {
 		Subsystem: "locker",
 		Name:      "events_total",
 		Help:      "Number of events locked",
-	}, []string{"status"})
+	}, []string{"group", "status"})
 
 	p.histWpcliStatMaxRSS = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: metricNamespace,

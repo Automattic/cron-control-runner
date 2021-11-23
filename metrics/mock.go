@@ -17,9 +17,9 @@ func (m Mock) RecordSiteEventLag(url string, oldestEventTs time.Time) {
 	}
 }
 
-func (m Mock) RecordLockEvent(status string) {
+func (m Mock) RecordLockEvent(group, status string) {
 	if m.Log {
-		log.Printf("metrics: RecordLockEvent(status: %s)", status)
+		log.Printf("metrics: RecordLockEvent(group: %s, status: %s)", group, status)
 	}
 }
 

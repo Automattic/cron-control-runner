@@ -246,6 +246,9 @@ func (orch *Orchestrator) setupRunners() error {
 	return nil
 }
 
+const LockGroupRunEvent = "run-event"
+const LockGroupGetEvents = "get-events"
+
 func (orch *Orchestrator) startEventRunner(workerID string, close chan struct{}, wg *sync.WaitGroup) {
 	defer wg.Done()
 	defer orch.logger.Infof("shutdown %q gracefully", workerID)
@@ -267,14 +270,14 @@ func (orch *Orchestrator) startEventRunner(workerID string, close chan struct{},
 				if lock, err = orch.locker.Lock(runnableEvent.LockKey()); err != nil {
 					// if there is an error, we continue as if it is not locked:
 					orch.logger.Warningf("error locking event %v: %v", runnableEvent, err)
-					orch.metrics.RecordLockEvent("error")
+					orch.metrics.RecordLockEvent(LockGroupRunEvent, "error")
 				} else if lock == nil {
 					// already locked, move on:
-					orch.metrics.RecordLockEvent("already_locked")
+					orch.metrics.RecordLockEvent(LockGroupRunEvent, "already_locked")
 					continue
 				} else {
 					// we got a lock:
-					orch.metrics.RecordLockEvent("locked")
+					orch.metrics.RecordLockEvent(LockGroupRunEvent, "locked")
 				}
 			}
 

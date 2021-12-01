@@ -45,9 +45,6 @@ type event = performer.Event
 
 type threadTracker map[string]chan struct{}
 
-const LockGroupRunEvent = "run-event"
-const LockGroupGetEvents = "get-events"
-
 // New sets up a new orchestrator based on the passed configurations
 func New(perf performer.Performer, metrics metrics.Manager, logger logger.Logger, locker locker.Locker, config Config) *Orchestrator {
 	config = sanitizeConfig(config)
@@ -201,18 +198,18 @@ func (orch *Orchestrator) fetchSiteEvents(site site, close chan struct{}) {
 	})()
 
 	if orch.locker != nil {
-		if lock, err := orch.locker.Lock(site.LockKey(), orch.config.GetEventsInterval); err != nil {
+		if lock, err := orch.locker.Lock(locker.GroupGetEvents, site.LockKey(), orch.config.GetEventsInterval); err != nil {
 			// if there is an error, we continue as if it is not locked:
 			orch.logger.Warningf("error locking site %s: %v", site.URL, err)
-			orch.metrics.RecordLockEvent(LockGroupGetEvents, "error")
+			orch.metrics.RecordLockEvent(locker.GroupGetEvents, "error")
 		} else if lock == nil {
 			// already locked, move on:
 			orch.logger.Debugf("getEvents: skipping site %s due to lock", site.URL)
-			orch.metrics.RecordLockEvent(LockGroupGetEvents, "already_locked")
+			orch.metrics.RecordLockEvent(locker.GroupGetEvents, "already_locked")
 			return
 		} else {
 			// we got a lock:
-			orch.metrics.RecordLockEvent(LockGroupGetEvents, "locked")
+			orch.metrics.RecordLockEvent(locker.GroupGetEvents, "locked")
 			// NOTE: we never unlock it. we let it expire and some other runner can find it unlocked.
 		}
 	}
@@ -285,17 +282,17 @@ func (orch *Orchestrator) startEventRunner(workerID string, close chan struct{},
 			var lock locker.Lock
 			var err error
 			if orch.locker != nil {
-				if lock, err = orch.locker.Lock(runnableEvent.LockKey(), 2*orch.config.GetEventsInterval); err != nil {
+				if lock, err = orch.locker.Lock(locker.GroupRunEvent, runnableEvent.LockKey(), 2*orch.config.GetEventsInterval); err != nil {
 					// if there is an error, we continue as if it is not locked:
 					orch.logger.Warningf("error locking event %v: %v", runnableEvent, err)
-					orch.metrics.RecordLockEvent(LockGroupRunEvent, "error")
+					orch.metrics.RecordLockEvent(locker.GroupRunEvent, "error")
 				} else if lock == nil {
 					// already locked, move on:
-					orch.metrics.RecordLockEvent(LockGroupRunEvent, "already_locked")
+					orch.metrics.RecordLockEvent(locker.GroupRunEvent, "already_locked")
 					continue
 				} else {
 					// we got a lock:
-					orch.metrics.RecordLockEvent(LockGroupRunEvent, "locked")
+					orch.metrics.RecordLockEvent(locker.GroupRunEvent, "locked")
 				}
 			}
 

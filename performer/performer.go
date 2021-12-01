@@ -47,5 +47,5 @@ type Sites = map[string]Site
 
 func (s *Site) LockKey() string {
 	hs := sha1.Sum([]byte(s.URL))
-	return "site:" + base32.StdEncoding.EncodeToString(hs[:])
+	return base32.StdEncoding.EncodeToString(hs[:])
 }

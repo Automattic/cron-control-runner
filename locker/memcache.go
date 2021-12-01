@@ -56,8 +56,15 @@ type memcacheLock struct {
 	Expires time.Time
 }
 
-func (m *memcacheLocker) Lock(k string, ttl time.Duration) (Lock, error) {
-	key := fmt.Sprintf("%s%s", m.KeyPrefix, k)
+func (m *memcacheLocker) cacheKey(g LockGroup, k string) string {
+	if m.KeyPrefix != "" {
+		return fmt.Sprintf("%s:%s:%s", m.KeyPrefix, string(g), k)
+	}
+	return fmt.Sprintf("%s:%s", string(g), k)
+}
+
+func (m *memcacheLocker) Lock(g LockGroup, k string, ttl time.Duration) (Lock, error) {
+	key := m.cacheKey(g, k)
 	ttl = ttl.Truncate(time.Second)
 	if ttl < time.Second {
 		ttl = time.Second

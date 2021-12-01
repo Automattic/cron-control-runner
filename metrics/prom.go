@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"github.com/Automattic/cron-control-runner/locker"
 	"log"
 	"net/http"
 	"time"
@@ -74,9 +75,9 @@ func (p *Prom) RecordRunEvent(isSuccess bool, elapsed time.Duration, siteURL str
 	})).Observe(elapsed.Seconds())
 }
 
-func (p *Prom) RecordLockEvent(group, status string) {
+func (p *Prom) RecordLockEvent(group locker.LockGroup, status string) {
 	p.ctrLockerEventsTotal.With(prometheus.Labels{
-		"group":  group,
+		"group":  string(group),
 		"status": status,
 	}).Inc()
 }

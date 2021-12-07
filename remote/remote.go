@@ -940,7 +940,7 @@ func tokenizeString(rawString string) []string {
 	quoted := false
 	var prevRune rune
 	tokenized := strings.FieldsFunc(rawString, func(r rune) bool {
-		//Tokenizing on double quotes EXCEPT when presceded by the escape char
+		//Tokenizing on double quotes EXCEPT when preceded by the escape char
 		if r == '"' && prevRune != '\\' {
 			quoted = !quoted
 		}

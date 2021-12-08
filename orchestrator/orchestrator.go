@@ -2,15 +2,16 @@ package orchestrator
 
 import (
 	"fmt"
+	"math/rand"
+	"sync"
+	"sync/atomic"
+	"time"
+
 	"github.com/Automattic/cron-control-runner/locker"
 	"github.com/Automattic/cron-control-runner/logger"
 	"github.com/Automattic/cron-control-runner/metrics"
 	"github.com/Automattic/cron-control-runner/performer"
 	"github.com/lthibault/jitterbug/v2"
-	"math/rand"
-	"sync"
-	"sync/atomic"
-	"time"
 
 	"gopkg.in/tomb.v2"
 )
@@ -164,6 +165,7 @@ func (orch *Orchestrator) startSiteWatcher(site site, close chan struct{}) {
 		orch.logger.Debugf("initial delay has elapsed for %+v, starting to run events", site)
 	}
 
+	// Add a small jitter to the event fetching interval, helping vary the memcache lock to split up the load between multiple containers.
 	ticker := jitterbug.New(orch.config.GetEventsInterval, &jitterbug.Norm{Stdev: orch.config.GetEventsInterval / 20})
 	defer ticker.Stop()
 
@@ -197,6 +199,7 @@ func (orch *Orchestrator) fetchSiteEvents(site site, close chan struct{}) {
 		<-orch.semGetEvents
 	})()
 
+	// Lock the event fetching for this site, so only 1 container does the fetch this interval.
 	if orch.locker != nil {
 		if lock, err := orch.locker.Lock(locker.GroupGetEvents, site.LockKey(), orch.config.GetEventsInterval); err != nil {
 			// if there is an error, we continue as if it is not locked:

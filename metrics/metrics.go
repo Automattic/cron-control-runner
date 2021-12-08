@@ -1,8 +1,9 @@
 package metrics
 
 import (
-	"github.com/Automattic/cron-control-runner/locker"
 	"time"
+
+	"github.com/Automattic/cron-control-runner/locker"
 )
 
 // Manager is the contract that metric implementations must follow.

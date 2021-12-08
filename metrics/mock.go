@@ -1,9 +1,10 @@
 package metrics
 
 import (
-	"github.com/Automattic/cron-control-runner/locker"
 	"log"
 	"time"
+
+	"github.com/Automattic/cron-control-runner/locker"
 )
 
 var _ Manager = Mock{}

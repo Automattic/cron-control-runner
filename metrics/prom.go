@@ -1,10 +1,11 @@
 package metrics
 
 import (
-	"github.com/Automattic/cron-control-runner/locker"
 	"log"
 	"net/http"
 	"time"
+
+	"github.com/Automattic/cron-control-runner/locker"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"

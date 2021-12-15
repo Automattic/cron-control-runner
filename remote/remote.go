@@ -804,15 +804,16 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 				// This is because the command has been terminated
 				break
 			}
-			read, err = tty.Read(buf)
-			atomic.AddInt64(&wpcli.BytesLogged, int64(read))
 
+			read, err = tty.Read(buf)
 			if nil != err {
 				if io.EOF != err {
 					log.Printf("error reading WP CLI tty output: %s\n", err.Error())
 				}
 				break
 			}
+
+			atomic.AddInt64(&wpcli.BytesLogged, int64(read))
 
 			if 0 == read {
 				continue

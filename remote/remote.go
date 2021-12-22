@@ -8,6 +8,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -357,7 +358,7 @@ func validateCommand(calledCmd string) (string, error) {
 }
 
 func getCleanWpCliArgumentArray(wpCliCmdString string) ([]string, error) {
-	rawArgs := strings.Fields(wpCliCmdString)
+	rawArgs := tokenizeString(wpCliCmdString)
 	cleanArgs := make([]string, 0)
 	openQuote := false
 	arg := ""
@@ -385,12 +386,14 @@ func getCleanWpCliArgumentArray(wpCliCmdString string) ([]string, error) {
 	}
 
 	if openQuote {
-		return make([]string, 0), fmt.Errorf("WP CLI command is invalid: %s", wpCliCmdString)
+		return make([]string, 0), errors.New(fmt.Sprintf("WP CLI command is invalid: %s\n", wpCliCmdString))
 	}
 
 	// Remove quotes from the args
 	for i := range cleanArgs {
-		cleanArgs[i] = strings.ReplaceAll(cleanArgs[i], "\"", "")
+		if( ! isJSON( cleanArgs[i])) { //don't alter JSON arguments
+			cleanArgs[i] = strings.ReplaceAll(cleanArgs[i], "\"", "")
+		}
 	}
 
 	return cleanArgs, nil
@@ -928,4 +931,28 @@ func streamLogs(conn net.Conn, GUID string) {
 	conn.Close()
 	logFile.Close()
 	log.Printf("log file for GUID %s sent\n", GUID)
+}
+
+/*
+Splits a string into an array based on whitespace except when that whitepace is inside double qoutes or escaped quotes
+*/
+func tokenizeString(rawString string) []string {
+	quoted := false
+	var prevRune rune
+	tokenized := strings.FieldsFunc(rawString, func(r rune) bool {
+		//Tokenizing on double quotes EXCEPT when preceded by the escape char
+		if r == '"' && prevRune != '\\' {
+			quoted = !quoted
+		}
+		prevRune = r
+		return !quoted && r == ' '
+	})
+	out := strings.Join(tokenized, ", ")
+	log.Printf("LOG: %s", out)
+	return tokenized
+}
+
+func isJSON(str string) bool {
+	var js json.RawMessage
+	return json.Unmarshal([]byte(str), &js) == nil
 }

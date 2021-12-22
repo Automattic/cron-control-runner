@@ -2,12 +2,6 @@ package main
 
 import (
 	"flag"
-	"github.com/Automattic/cron-control-runner/locker"
-	"github.com/Automattic/cron-control-runner/logger"
-	"github.com/Automattic/cron-control-runner/metrics"
-	"github.com/Automattic/cron-control-runner/orchestrator"
-	"github.com/Automattic/cron-control-runner/performer"
-	"github.com/Automattic/cron-control-runner/remote"
 	"log"
 	"math/rand"
 	"os"
@@ -15,6 +9,13 @@ import (
 	"path/filepath"
 	"syscall"
 	"time"
+
+	"github.com/Automattic/cron-control-runner/locker"
+	"github.com/Automattic/cron-control-runner/logger"
+	"github.com/Automattic/cron-control-runner/metrics"
+	"github.com/Automattic/cron-control-runner/orchestrator"
+	"github.com/Automattic/cron-control-runner/performer"
+	"github.com/Automattic/cron-control-runner/remote"
 )
 
 type options struct {
@@ -62,10 +63,10 @@ func main() {
 		perf = performer.NewCLI(options.wpCLIPath, options.wpPath, options.fpmURL, metricsManager, logger)
 	}
 
-	// Setup the locker, if any:
+	// Setup the locker, if enabled.
 	var lock locker.Locker
 	if options.useLocker {
-		lock = locker.NewMemcache(logger, "__ccr:lock:", options.dataConfigPath, 2*options.orchestratorConfig.GetEventsInterval, options.lockerRefreshInterval)
+		lock = locker.NewMemcache(logger, "__ccr", options.dataConfigPath, options.lockerRefreshInterval)
 		defer lock.Close()
 	}
 

@@ -3,11 +3,12 @@ package locker
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/Automattic/cron-control-runner/logger"
-	"github.com/bradfitz/gomemcache/memcache"
 	"os"
 	"sort"
 	"time"
+
+	"github.com/Automattic/cron-control-runner/logger"
+	"github.com/bradfitz/gomemcache/memcache"
 )
 
 var _ Locker = &memcacheLocker{}
@@ -18,18 +19,16 @@ type memcacheLocker struct {
 	ConfigPath      string
 	ServerList      *memcache.ServerList
 	Client          *memcache.Client
-	LeaseInterval   time.Duration
 	RefreshInterval time.Duration
 	CloseChan       chan struct{}
 }
 
-func NewMemcache(log logger.Logger, keyPrefix, configPath string, leaseInterval, refreshInterval time.Duration) Locker {
+func NewMemcache(log logger.Logger, keyPrefix, configPath string, refreshInterval time.Duration) Locker {
 	res := &memcacheLocker{
 		KeyPrefix:       keyPrefix,
 		Log:             log,
 		ConfigPath:      configPath,
 		ServerList:      &memcache.ServerList{},
-		LeaseInterval:   leaseInterval,
 		RefreshInterval: refreshInterval,
 		CloseChan:       make(chan struct{}),
 	}
@@ -58,29 +57,47 @@ type memcacheLock struct {
 	Expires time.Time
 }
 
-func (m *memcacheLocker) Lock(k string) (Lock, error) {
-	key := fmt.Sprintf("%s%s", m.KeyPrefix, k)
-	if err := m.Client.Add(&memcache.Item{
+func (m *memcacheLocker) cacheKey(g LockGroup, k string) string {
+	if m.KeyPrefix != "" {
+		return fmt.Sprintf("%s:%s:%s", m.KeyPrefix, string(g), k)
+	}
+	return fmt.Sprintf("%s:%s", string(g), k)
+}
+
+func (m *memcacheLocker) Lock(g LockGroup, k string, ttl time.Duration) (Lock, error) {
+	key := m.cacheKey(g, k)
+
+	ttl = ttl.Truncate(time.Second)
+	if ttl < time.Second {
+		ttl = time.Second
+	}
+
+	err := m.Client.Add(&memcache.Item{
 		Key:        key,
 		Value:      myHostname, // we put the hostname of the lock owner as the value of the key
 		Flags:      0,
-		Expiration: int32(m.LeaseInterval.Seconds()),
-	}); err == nil {
-		return &memcacheLock{
-			Owner:   m,
-			Key:     key,
-			Expires: time.Now().Add(m.LeaseInterval - (1 * time.Second)),
-		}, nil
-	} else if err == memcache.ErrNotStored {
-		return nil, nil
-	} else {
+		Expiration: int32(ttl / time.Second),
+	})
+
+	if err != nil {
+		if err == memcache.ErrNotStored {
+			// Was already locked.
+			return nil, nil
+		}
+
 		return nil, fmt.Errorf("could not add key=%q: %v", key, err)
 	}
+
+	return &memcacheLock{
+		Owner:   m,
+		Key:     key,
+		Expires: time.Now().Add(ttl),
+	}, nil
 }
 
 func (m *memcacheLock) Unlock() error {
-	// do NOT delete a lock that might have expired:
-	if time.Until(m.Expires) > (1 * time.Second) {
+	// do NOT delete a lock that might have expired (i.e. rounding errors from clock skew):
+	if time.Until(m.Expires) >= time.Second {
 		if err := m.Owner.Client.Delete(m.Key); err != nil && err != memcache.ErrCacheMiss {
 			return err
 		}
@@ -114,18 +131,22 @@ func (m *memcacheLocker) reloadConfig() error {
 		return err
 	}
 	defer (func() { _ = f.Close() })()
+
 	var dc DataConfig
 	if err = json.NewDecoder(f).Decode(&dc); err != nil {
 		return err
 	}
+
 	servers := make([]string, len(dc.Memcache))
 	for i, mcs := range dc.Memcache {
 		servers[i] = fmt.Sprintf("%s:%d", mcs.Host, mcs.Port)
 	}
+
 	sort.Strings(servers)
 	if err = m.ServerList.SetServers(servers...); err != nil {
 		return err
 	}
+
 	return nil
 }
 

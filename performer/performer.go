@@ -44,3 +44,8 @@ type Site struct {
 
 // Sites is a map of siteurl => Site
 type Sites = map[string]Site
+
+func (s *Site) LockKey() string {
+	hs := sha1.Sum([]byte(s.URL))
+	return base32.StdEncoding.EncodeToString(hs[:])
+}

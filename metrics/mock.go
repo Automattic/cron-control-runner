@@ -3,9 +3,12 @@ package metrics
 import (
 	"log"
 	"time"
+
+	"github.com/Automattic/cron-control-runner/locker"
 )
 
 var _ Manager = Mock{}
+
 // Mock is a mock implementation of a Metrics Manager.
 type Mock struct {
 	Log bool
@@ -17,9 +20,9 @@ func (m Mock) RecordSiteEventLag(url string, oldestEventTs time.Time) {
 	}
 }
 
-func (m Mock) RecordLockEvent(status string) {
+func (m Mock) RecordLockEvent(group locker.LockGroup, status string) {
 	if m.Log {
-		log.Printf("metrics: RecordLockEvent(status: %s)", status)
+		log.Printf("metrics: RecordLockEvent(group: %s, status: %s)", group, status)
 	}
 }
 

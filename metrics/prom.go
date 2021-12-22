@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Automattic/cron-control-runner/locker"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -74,8 +76,9 @@ func (p *Prom) RecordRunEvent(isSuccess bool, elapsed time.Duration, siteURL str
 	})).Observe(elapsed.Seconds())
 }
 
-func (p *Prom) RecordLockEvent(status string) {
+func (p *Prom) RecordLockEvent(group locker.LockGroup, status string) {
 	p.ctrLockerEventsTotal.With(prometheus.Labels{
+		"group":  string(group),
 		"status": status,
 	}).Inc()
 }
@@ -173,7 +176,7 @@ func (p *Prom) initializeMetrics() {
 		Subsystem: "locker",
 		Name:      "events_total",
 		Help:      "Number of events locked",
-	}, []string{"status"})
+	}, []string{"group", "status"})
 
 	p.histWpcliStatMaxRSS = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: metricNamespace,

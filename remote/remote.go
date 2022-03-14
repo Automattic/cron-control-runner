@@ -391,7 +391,7 @@ func getCleanWpCliArgumentArray(wpCliCmdString string) ([]string, error) {
 
 	// Remove quotes from the args
 	for i := range cleanArgs {
-		if !isJSON(cleanArgs[i]) { //don't alter JSON arguments
+		if !isJSONObject(cleanArgs[i]) { //don't alter JSON arguments
 			cleanArgs[i] = strings.ReplaceAll(cleanArgs[i], "\"", "")
 		}
 	}

@@ -391,7 +391,7 @@ func getCleanWpCliArgumentArray(wpCliCmdString string) ([]string, error) {
 
 	// Remove quotes from the args
 	for i := range cleanArgs {
-		if( ! isJSON( cleanArgs[i])) { //don't alter JSON arguments
+		if !isJSON(cleanArgs[i]) { //don't alter JSON arguments
 			cleanArgs[i] = strings.ReplaceAll(cleanArgs[i], "\"", "")
 		}
 	}
@@ -650,7 +650,9 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 	cmdArgs := make([]string, 0)
 	cmdArgs = append(cmdArgs, strings.Fields("--path="+remoteConfig.wpPath)...)
 
+	log.Printf("string %s\n", wpCliCmdString)
 	cleanArgs, err := getCleanWpCliArgumentArray(wpCliCmdString)
+	log.Printf("string2 %s\n", strings.Join(cleanArgs, " "))
 	if nil != err {
 		conn.Write([]byte("WP CLI command is invalid"))
 		conn.Close()
@@ -955,4 +957,8 @@ func tokenizeString(rawString string) []string {
 func isJSON(str string) bool {
 	var js json.RawMessage
 	return json.Unmarshal([]byte(str), &js) == nil
+}
+
+func isJSONObject(str string) bool {
+	return -1 != strings.Index(str, "{") && isJSON(str)
 }

@@ -656,6 +656,7 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 		conn.Close()
 		return errors.New(err.Error())
 	}
+	log.Printf("LOG CLI Arguments (%d elements): %s", len(cleanArgs), strings.Join(cleanArgs, ", "))
 
 	cmdArgs = append(cmdArgs, cleanArgs...)
 

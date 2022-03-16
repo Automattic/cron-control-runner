@@ -391,7 +391,7 @@ func getCleanWpCliArgumentArray(wpCliCmdString string) ([]string, error) {
 
 	// Remove quotes from the args
 	for i := range cleanArgs {
-		if( ! isJSON( cleanArgs[i])) { //don't alter JSON arguments
+		if !isJSONObject(cleanArgs[i]) { //don't alter JSON arguments
 			cleanArgs[i] = strings.ReplaceAll(cleanArgs[i], "\"", "")
 		}
 	}
@@ -656,6 +656,7 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 		conn.Close()
 		return errors.New(err.Error())
 	}
+	log.Printf("LOG CLI Arguments (%d elements): %s", len(cleanArgs), strings.Join(cleanArgs, ", "))
 
 	cmdArgs = append(cmdArgs, cleanArgs...)
 
@@ -953,6 +954,13 @@ func tokenizeString(rawString string) []string {
 }
 
 func isJSON(str string) bool {
-	var js json.RawMessage
-	return json.Unmarshal([]byte(str), &js) == nil
+	return json.Valid([]byte(str))
+}
+
+func isJSONObject(str string) bool {
+	trimmedStr := strings.TrimSpace(str)
+	if !strings.HasPrefix(trimmedStr, "{") || !strings.HasSuffix(trimmedStr, "}") {
+		return false
+	}
+	return isJSON(str)
 }

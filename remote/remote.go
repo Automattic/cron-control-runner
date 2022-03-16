@@ -959,5 +959,9 @@ func isJSON(str string) bool {
 }
 
 func isJSONObject(str string) bool {
-	return -1 != strings.Index(str, "{") && isJSON(str)
+	trimmedStr := strings.TrimSpace(str)
+	if !strings.HasPrefix(trimmedStr, "{") || !strings.HasSuffix(trimmedStr, "}") {
+		return false
+	}
+	return isJSON(str)
 }

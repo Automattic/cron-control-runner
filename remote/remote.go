@@ -650,9 +650,7 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 	cmdArgs := make([]string, 0)
 	cmdArgs = append(cmdArgs, strings.Fields("--path="+remoteConfig.wpPath)...)
 
-	log.Printf("string %s\n", wpCliCmdString)
 	cleanArgs, err := getCleanWpCliArgumentArray(wpCliCmdString)
-	log.Printf("string2 %s\n", strings.Join(cleanArgs, " "))
 	if nil != err {
 		conn.Write([]byte("WP CLI command is invalid"))
 		conn.Close()

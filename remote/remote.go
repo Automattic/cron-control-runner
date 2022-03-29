@@ -833,15 +833,18 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 				break
 			}
 		}
-		log.Println("closing logfile and marking the WP-CLI as finished")
+		log.Println("closing logfile")
 		logFile.Sync()
 		logFile.Close()
 
 		time.Sleep(time.Duration(50 * time.Millisecond.Nanoseconds()))
 		if wpcli.Running {
+			log.Println("marking the WP-CLI as finished")
 			wpcli.padlock.Lock()
 			wpcli.Running = false
 			wpcli.padlock.Unlock()
+		} else {
+			log.Println("WP-CLI already finished running")
 		}
 	}()
 

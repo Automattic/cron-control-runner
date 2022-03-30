@@ -634,6 +634,7 @@ func attachWpCliCmdRemote(conn net.Conn, wpcli *wpCLIProcess, GUID string, rows 
 	delete(wpcli.BytesStreamed, remoteAddress)
 	if 0 == len(wpcli.BytesStreamed) {
 		log.Printf("cleaning out %s\n", GUID)
+		wpcli.Running = false
 		wpcli.padlock.Unlock()
 		wpcli.padlock = nil
 		padlock.Lock()
@@ -874,6 +875,10 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 
 	for {
 		if (!wpcli.Running && wpcli.BytesStreamed[remoteAddress] >= wpcli.BytesLogged) || nil == conn {
+			if nil == conn {
+				log.Println("WWWWAIT")
+				time.Sleep(time.Duration(200 * time.Millisecond.Nanoseconds()))
+			}
 			break
 		}
 		log.Printf("waiting for remaining bytes to be sent to a client: at %d - have %d\n", wpcli.BytesStreamed[remoteAddress], wpcli.BytesLogged)

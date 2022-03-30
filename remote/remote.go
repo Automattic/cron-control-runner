@@ -634,6 +634,7 @@ func attachWpCliCmdRemote(conn net.Conn, wpcli *wpCLIProcess, GUID string, rows 
 	delete(wpcli.BytesStreamed, remoteAddress)
 	if 0 == len(wpcli.BytesStreamed) {
 		log.Printf("cleaning out %s\n", GUID)
+		wpcli.Running = false
 		wpcli.padlock.Unlock()
 		wpcli.padlock = nil
 		padlock.Lock()
@@ -833,15 +834,19 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 				break
 			}
 		}
-		log.Println("closing logfile and marking the WP-CLI as finished")
+		log.Println("closing logfile")
 		logFile.Sync()
 		logFile.Close()
 
 		time.Sleep(time.Duration(50 * time.Millisecond.Nanoseconds()))
-
-		wpcli.padlock.Lock()
-		wpcli.Running = false
-		wpcli.padlock.Unlock()
+		if wpcli.Running {
+			log.Println("marking the WP-CLI as finished")
+			wpcli.padlock.Lock()
+			wpcli.Running = false
+			wpcli.padlock.Unlock()
+		} else {
+			log.Println("WP-CLI already finished running")
+		}
 	}()
 
 	go func() {
@@ -886,6 +891,7 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 	delete(wpcli.BytesStreamed, remoteAddress)
 	if 0 == len(wpcli.BytesStreamed) {
 		log.Printf("cleaning out %s\n", GUID)
+		wpcli.Running = false
 		wpcli.padlock.Unlock()
 		wpcli.padlock = nil
 		padlock.Lock()

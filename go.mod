@@ -4,7 +4,7 @@ go 1.17
 
 require (
 	github.com/bradfitz/gomemcache v0.0.0-20190913173617-a41fca850d0b
-	github.com/creack/pty v1.1.17
+	github.com/creack/pty v1.1.18
 	github.com/howeyc/fsnotify v0.9.0
 	github.com/prometheus/client_golang v1.11.0
 	github.com/yookoala/gofast v0.6.0

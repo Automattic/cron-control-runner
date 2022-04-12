@@ -31,6 +31,10 @@ import (
 	"golang.org/x/net/websocket"
 )
 
+const (
+	ptyErr = "read /dev/ptmx: input/output error"
+)
+
 // Holds info related to a specific remote CLI that is running.
 type wpCLIProcess struct {
 	Cmd           *exec.Cmd
@@ -629,20 +633,7 @@ func attachWpCliCmdRemote(conn net.Conn, wpcli *wpCLIProcess, GUID string, rows 
 	conn.Close()
 	connectionActive = false
 
-	wpcli.padlock.Lock()
 	log.Printf("cleaning out %s\n", remoteAddress)
-	delete(wpcli.BytesStreamed, remoteAddress)
-	if 0 == len(wpcli.BytesStreamed) {
-		log.Printf("cleaning out %s\n", GUID)
-		wpcli.Running = false
-		wpcli.padlock.Unlock()
-		wpcli.padlock = nil
-		padlock.Lock()
-		delete(gGUIDttys, GUID)
-		padlock.Unlock()
-	} else {
-		wpcli.padlock.Unlock()
-	}
 
 	return nil
 }
@@ -740,8 +731,13 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 		for {
 			select {
 			case <-ticker:
-				if (!wpcli.Running && wpcli.BytesStreamed[remoteAddress] >= wpcli.BytesLogged) || nil == conn {
-					log.Println("WP CLI command finished and all data has been written, exiting this watcher loop")
+				if nil == conn {
+					log.Println("client connection is closed, exiting this watcher loop" )
+					break Exit_Loop
+				}
+
+				if (!wpcli.Running && wpcli.BytesStreamed[remoteAddress] >= wpcli.BytesLogged) {
+					log.Println("WP CLI command finished and all data has been written, exiting this watcher loop 123")
 					break Exit_Loop
 				}
 			case ev := <-watcher.Event:
@@ -815,7 +811,9 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 				if io.EOF != err {
 					log.Printf("error reading WP CLI tty output: %s\n", err.Error())
 				}
-				break
+				if err.Error() != ptyErr {
+					break
+				}
 			}
 
 			atomic.AddInt64(&wpcli.BytesLogged, int64(read))
@@ -862,7 +860,9 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 
 	if !state.Exited() {
 		log.Println("terminating the wp command")
-		conn.Write([]byte("Command has been terminated\n"))
+		if nil != conn {
+			conn.Write([]byte("Command has been terminated\n"))
+		}
 		cmd.Process.Kill()
 	}
 

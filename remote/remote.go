@@ -859,7 +859,7 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 		log.Printf("runWpCliCmdRemote: error from the wp command: %s\n", err.Error())
 	}
 
-	log.Printf("runWpCliCmdRemote: comand finished")
+	log.Printf("runWpCliCmdRemote: comand finished: %s\n", GUID)
 
 	if wpcli.Running {
 		log.Println("runWpCliCmdRemote: marking the WP-CLI as finished")

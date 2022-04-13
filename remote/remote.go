@@ -633,7 +633,7 @@ func attachWpCliCmdRemote(conn net.Conn, wpcli *wpCLIProcess, GUID string, rows 
 	conn.Close()
 	connectionActive = false
 
-	log.Printf("cleaning out %s\n", remoteAddress)
+	log.Printf("attachWpCliCmdRemote: cleaning out %s\n", remoteAddress)
 
 	return nil
 }
@@ -687,7 +687,7 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 		conn.Close()
 		return fmt.Errorf("runWpCliCmdRemote: error setting the WP CLI tty window size: %s", err.Error())
 	}
-	defer tty.Close()
+	defer func() { _ = tty.Close() }()
 
 	remoteAddress := conn.RemoteAddr().String()
 
@@ -720,6 +720,7 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 		return fmt.Errorf("runWpCliCmdRemote: error opening the read file for the stream: %s", err.Error())
 	}
 
+	// logfile -> connection
 	go func() {
 		var written, read int
 		var buf []byte = make([]byte, 8192)
@@ -795,13 +796,24 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 		return err
 	}
 
+	// tty output -> logfile
 	go func() {
 		var written, read int
 		var err error
 		var buf []byte = make([]byte, 8192)
 
 		for {
+			padlock.Lock()
+			running := wpcli.Running
+			padlock.Unlock()
+
+			if ! running {
+				log.Printf("runWpCliCmdRemote: command already finished. Stop reading WP CLI tty output")
+				break
+			}
+
 			if _, err = tty.Stat(); nil != err {
+				log.Printf("runWpCliCmdRemote: tty closed. Command already finished. Stop reading WP CLI tty output")
 				// This is because the command has been terminated
 				break
 			}
@@ -811,9 +823,7 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 				if io.EOF != err {
 					log.Printf("runWpCliCmdRemote: error reading WP CLI tty output: %s\n", err.Error())
 				}
-				if err.Error() != ptyErr {
-					break
-				}
+				break
 			}
 
 			atomic.AddInt64(&wpcli.BytesLogged, int64(read))
@@ -835,16 +845,6 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 		log.Println("closing logfile")
 		logFile.Sync()
 		logFile.Close()
-
-		time.Sleep(time.Duration(50 * time.Millisecond.Nanoseconds()))
-		if wpcli.Running {
-			log.Println("runWpCliCmdRemote: marking the WP-CLI as finished")
-			wpcli.padlock.Lock()
-			wpcli.Running = false
-			wpcli.padlock.Unlock()
-		} else {
-			log.Println("runWpCliCmdRemote: WP-CLI already finished running")
-		}
 	}()
 
 	go func() {
@@ -853,9 +853,21 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 		conn = nil
 	}()
 
+	log.Printf("runWpCliCmdRemote: waiting command to finish")
 	state, err := cmd.Process.Wait()
 	if nil != err {
 		log.Printf("runWpCliCmdRemote: error from the wp command: %s\n", err.Error())
+	}
+
+	log.Printf("runWpCliCmdRemote: comand finished")
+
+	if wpcli.Running {
+		log.Println("runWpCliCmdRemote: marking the WP-CLI as finished")
+		wpcli.padlock.Lock()
+		wpcli.Running = false
+		wpcli.padlock.Unlock()
+	} else {
+		log.Println("runWpCliCmdRemote: WP-CLI already finished running")
 	}
 
 	if !state.Exited() {

@@ -611,7 +611,7 @@ func attachWpCliCmdRemote(conn net.Conn, wpcli *wpCLIProcess, GUID string, rows 
 			select {
 			case <-ticker:
 				if !connectionActive {
-					log.Println("attachWpCliCmdRemote: client connection is closed, exiting this watcher loop")
+					log.Println("attachWpCliCmdRemote: ticker: client connection is closed, exiting this watcher loop")
 					break Watcher_Loop
 				}
 
@@ -630,6 +630,11 @@ func attachWpCliCmdRemote(conn net.Conn, wpcli *wpCLIProcess, GUID string, rows 
 				read, err = readFile.Read(buf)
 				if 0 == read {
 					continue
+				}
+
+				if !connectionActive || conn == nil {
+					log.Println("attachWpCliCmdRemote: client connection is closed, exiting this watcher loop")
+					break Watcher_Loop
 				}
 
 				written, err = conn.Write(buf[:read])

@@ -6,11 +6,16 @@ package remote
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/creack/pty"
+	"github.com/howeyc/fsnotify"
+	"golang.org/x/crypto/ssh/terminal"
+	"golang.org/x/net/websocket"
 	"io"
 	"log"
 	"net"
@@ -25,16 +30,14 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
-
-	"github.com/creack/pty"
-	"github.com/howeyc/fsnotify"
-	"golang.org/x/crypto/ssh/terminal"
-	"golang.org/x/net/websocket"
+	"unicode"
 )
 
 const (
 	shutdownErrorCode = 4001 // WebSocket close code when a shutdown signal is detected
 )
+
+var nonUTF8Replacement = []byte(string(unicode.ReplacementChar))
 
 // Holds info related to a specific remote CLI that is running.
 type wpCLIProcess struct {
@@ -895,18 +898,21 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 				break
 			}
 
-			atomic.AddInt64(&wpcli.BytesLogged, int64(read))
-
 			if 0 == read {
 				continue
 			}
 
-			written, err = logFile.Write(buf[:read])
+			utf8data := bytes.ToValidUTF8(buf[:read], nonUTF8Replacement)
+			utf8DataLength := len(utf8data)
+
+			atomic.AddInt64(&wpcli.BytesLogged, int64(utf8DataLength))
+
+			written, err = logFile.Write(utf8data)
 			if nil != err {
 				log.Printf("runWpCliCmdRemote: error writing to logfle: %s\n", err.Error())
 				break
 			}
-			if written != read {
+			if written != utf8DataLength {
 				log.Printf("runWpCliCmdRemote: error writing to logfile, read %d and only wrote %d\n", read, written)
 				break
 			}

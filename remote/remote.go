@@ -34,7 +34,13 @@ import (
 )
 
 const (
-	shutdownErrorCode = 4001 // WebSocket close code when a shutdown signal is detected
+	// WebSocket close code when a shutdown signal is detected
+	shutdownErrorCode = 4001
+
+	// The child's side of the pty being closed when the child dies,
+	// the subsequent read on ptmx is expected to fail
+	// See https://github.com/creack/pty/issues/21
+	ptyErr = "read /dev/ptmx: input/output error"
 )
 
 var nonUTF8Replacement = []byte(string(unicode.ReplacementChar))
@@ -892,7 +898,7 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 
 			read, err = tty.Read(buf)
 			if nil != err {
-				if io.EOF != err {
+				if io.EOF != err && err.Error() != ptyErr {
 					log.Printf("runWpCliCmdRemote: error reading WP CLI tty output: %s\n", err.Error())
 				}
 				break

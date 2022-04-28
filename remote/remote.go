@@ -237,7 +237,7 @@ func authConn(conn net.Conn) {
 	wpCLIProcess, found := gGUIDttys[GUID]
 	padlock.Unlock()
 
-	if found && wpCLIProcess.Running {
+	if found {
 		if "vip-go-retrieve-remote-logs" == cmd {
 			conn.Write([]byte(fmt.Sprintf("Not sending the logs because the WP-CLI command with GUID %s is still running", GUID)))
 			conn.Close()

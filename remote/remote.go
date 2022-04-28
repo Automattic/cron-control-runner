@@ -408,26 +408,33 @@ func getCleanWpCliArgumentArray(wpCliCmdString string) ([]string, error) {
 	return cleanArgs, nil
 }
 
-func processShutdown(conn net.Conn, wpcli *wpCLIProcess) {
+func processShutdown(conn net.Conn, wpcli *wpCLIProcess, done <-chan bool) {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 	defer signal.Stop(sigChan)
 
-	sig := <-sigChan
-	log.Printf("remote: caught termination signal %v, starting shutdown. GUID: %s\n", sig, wpcli.GUID)
+	for {
+		select {
+		case <-done:
+			log.Printf("remote: command finished, exiting shutdown signal watcher. GUID: %s\n", wpcli.GUID)
+			return;
+		case sig := <-sigChan:
+			log.Printf("remote: caught termination signal %v, starting shutdown. GUID: %s\n", sig, wpcli.GUID)
 
-	wpcli.padlock.Lock()
+			wpcli.padlock.Lock()
 
-	wsConn, ok := conn.(*websocket.Conn)
-	if ok {
-		wsConn.WriteClose(shutdownErrorCode)
+			wsConn, ok := conn.(*websocket.Conn)
+			if ok {
+				wsConn.WriteClose(shutdownErrorCode)
+			}
+
+			conn.Close()
+
+			wpcli.Cmd.Process.Kill()
+
+			wpcli.padlock.Unlock()
+		}
 	}
-
-	conn.Close()
-
-	wpcli.Cmd.Process.Kill()
-
-	wpcli.padlock.Unlock()
 }
 
 func processTCPConnectionData(conn net.Conn, wpcli *wpCLIProcess) {
@@ -667,7 +674,9 @@ func attachWpCliCmdRemote(conn net.Conn, wpcli *wpCLIProcess, GUID string, rows 
 		wg.Done()
 	}()
 
-	go processShutdown(conn, wpcli)
+	done := make(chan bool, 1)
+
+	go processShutdown(conn, wpcli, done)
 
 	go func() {
 		processTCPConnectionData(conn, wpcli)
@@ -683,6 +692,8 @@ func attachWpCliCmdRemote(conn net.Conn, wpcli *wpCLIProcess, GUID string, rows 
 	if conn != nil {
 		conn.Close()
 	}
+
+	done <- true
 
 	log.Printf("attachWpCliCmdRemote: cleaning out %s\n", remoteAddress)
 
@@ -922,7 +933,9 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 		logFile.Close()
 	}()
 
-	go processShutdown(conn, wpcli)
+	done := make(chan bool, 1)
+
+	go processShutdown(conn, wpcli, done)
 
 	go func() {
 		processTCPConnectionData(conn, wpcli)
@@ -990,6 +1003,8 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 	} else {
 		wpcli.padlock.Unlock()
 	}
+
+	done <- true
 
 	return nil
 }

@@ -408,14 +408,16 @@ func getCleanWpCliArgumentArray(wpCliCmdString string) ([]string, error) {
 	return cleanArgs, nil
 }
 
-func connWriteUTF8(conn net.Conn, data []byte) (int, error) {
+func connWriteUTF8(conn net.Conn, data []byte) (int, int, error) {
 	if conn == nil {
-		return 0, errors.New("invalid connection")
+		return 0, 0, errors.New("invalid connection")
 	}
 
 	utf8data := bytes.ToValidUTF8(data, nonUTF8Replacement)
 
-	return conn.Write(utf8data)
+	n, err := conn.Write(utf8data)
+
+	return len(data), n, err
 }
 
 func processShutdown(conn net.Conn, wpcli *wpCLIProcess) {
@@ -564,7 +566,7 @@ func attachWpCliCmdRemote(conn net.Conn, wpcli *wpCLIProcess, GUID string, rows 
 
 	wg.Add(1)
 	go func() {
-		var read int
+		var written, read int
 		var buf []byte = make([]byte, 8192)
 
 		readFile, err := os.OpenFile(wpcli.LogFileName, os.O_RDONLY, os.ModeCharDevice)
@@ -598,7 +600,7 @@ func attachWpCliCmdRemote(conn net.Conn, wpcli *wpCLIProcess, GUID string, rows 
 			}
 
 
-			_, err = connWriteUTF8(conn, buf[:read])
+			written, _, err = connWriteUTF8(conn, buf[:read])
 			if nil != err {
 				log.Printf("attachWpCliCmdRemote catchup: error writing to client connection: %s\n", err.Error())
 				readFile.Close()
@@ -606,7 +608,7 @@ func attachWpCliCmdRemote(conn net.Conn, wpcli *wpCLIProcess, GUID string, rows 
 			}
 
 			wpcli.padlock.Lock()
-			wpcli.BytesStreamed[remoteAddress] = wpcli.BytesStreamed[remoteAddress] + int64(len(buf[:read]))
+			wpcli.BytesStreamed[remoteAddress] = wpcli.BytesStreamed[remoteAddress] + int64(written)
 
 			if wpcli.BytesStreamed[remoteAddress] == wpcli.BytesLogged {
 				wpcli.padlock.Unlock()
@@ -651,14 +653,14 @@ func attachWpCliCmdRemote(conn net.Conn, wpcli *wpCLIProcess, GUID string, rows 
 					break Watcher_Loop
 				}
 
-				_, err = connWriteUTF8(conn, buf[:read])
+				written, _, err = connWriteUTF8(conn, buf[:read])
 				if nil != err {
 					log.Printf("attachWpCliCmdRemote: error writing to client connection: %s\n", err.Error())
 					break Watcher_Loop
 				}
 
 				wpcli.padlock.Lock()
-				wpcli.BytesStreamed[remoteAddress] += int64(len(buf[:read]))
+				wpcli.BytesStreamed[remoteAddress] += int64(written)
 				wpcli.padlock.Unlock()
 
 			case err := <-watcher.Error:
@@ -785,7 +787,7 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 
 	// logfile -> connection
 	go func() {
-		var read int
+		var written, read int
 		var buf []byte = make([]byte, 8192)
 
 		// Used to monitor when the connection is disconnected or the CLI command finishes
@@ -816,10 +818,10 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 							break Exit_Loop
 						}
 
-						_, err = connWriteUTF8(conn, buf[:read])
+						written, _, err = connWriteUTF8(conn, buf[:read])
 
 						wpcli.padlock.Lock()
-						wpcli.BytesStreamed[remoteAddress] += int64(len(buf[:read]))
+						wpcli.BytesStreamed[remoteAddress] += int64(written)
 						wpcli.padlock.Unlock()
 					}
 				}
@@ -849,10 +851,10 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 					break Exit_Loop
 				}
 
-				_, err = connWriteUTF8(conn, buf[:read])
+				written, _, err = connWriteUTF8(conn, buf[:read])
 
 				wpcli.padlock.Lock()
-				wpcli.BytesStreamed[remoteAddress] += int64(len(buf[:read]))
+				wpcli.BytesStreamed[remoteAddress] += int64(written)
 				wpcli.padlock.Unlock()
 
 				if nil != err {

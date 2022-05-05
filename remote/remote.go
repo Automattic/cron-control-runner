@@ -408,6 +408,16 @@ func getCleanWpCliArgumentArray(wpCliCmdString string) ([]string, error) {
 	return cleanArgs, nil
 }
 
+func connWriteUTF8(conn net.Conn, data []byte) (int, error) {
+	if conn == nil {
+		return 0, errors.New("invalid connection")
+	}
+
+	utf8data := bytes.ToValidUTF8(data, nonUTF8Replacement)
+
+	return conn.Write(utf8data)
+}
+
 func processShutdown(conn net.Conn, wpcli *wpCLIProcess) {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
@@ -554,7 +564,7 @@ func attachWpCliCmdRemote(conn net.Conn, wpcli *wpCLIProcess, GUID string, rows 
 
 	wg.Add(1)
 	go func() {
-		var written, read int
+		var read int
 		var buf []byte = make([]byte, 8192)
 
 		readFile, err := os.OpenFile(wpcli.LogFileName, os.O_RDONLY, os.ModeCharDevice)
@@ -587,7 +597,8 @@ func attachWpCliCmdRemote(conn net.Conn, wpcli *wpCLIProcess, GUID string, rows 
 				break Catchup_Loop
 			}
 
-			written, err = conn.Write(buf[:read])
+
+			_, err = connWriteUTF8(conn, buf[:read])
 			if nil != err {
 				log.Printf("attachWpCliCmdRemote catchup: error writing to client connection: %s\n", err.Error())
 				readFile.Close()
@@ -595,7 +606,7 @@ func attachWpCliCmdRemote(conn net.Conn, wpcli *wpCLIProcess, GUID string, rows 
 			}
 
 			wpcli.padlock.Lock()
-			wpcli.BytesStreamed[remoteAddress] = wpcli.BytesStreamed[remoteAddress] + int64(written)
+			wpcli.BytesStreamed[remoteAddress] = wpcli.BytesStreamed[remoteAddress] + int64(len(buf[:read]))
 
 			if wpcli.BytesStreamed[remoteAddress] == wpcli.BytesLogged {
 				wpcli.padlock.Unlock()
@@ -640,14 +651,14 @@ func attachWpCliCmdRemote(conn net.Conn, wpcli *wpCLIProcess, GUID string, rows 
 					break Watcher_Loop
 				}
 
-				written, err = conn.Write(buf[:read])
+				_, err = connWriteUTF8(conn, buf[:read])
 				if nil != err {
 					log.Printf("attachWpCliCmdRemote: error writing to client connection: %s\n", err.Error())
 					break Watcher_Loop
 				}
 
 				wpcli.padlock.Lock()
-				wpcli.BytesStreamed[remoteAddress] += int64(written)
+				wpcli.BytesStreamed[remoteAddress] += int64(len(buf[:read]))
 				wpcli.padlock.Unlock()
 
 			case err := <-watcher.Error:
@@ -774,7 +785,7 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 
 	// logfile -> connection
 	go func() {
-		var written, read int
+		var read int
 		var buf []byte = make([]byte, 8192)
 
 		// Used to monitor when the connection is disconnected or the CLI command finishes
@@ -805,10 +816,10 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 							break Exit_Loop
 						}
 
-						written, err = conn.Write(buf[:read])
+						_, err = connWriteUTF8(conn, buf[:read])
 
 						wpcli.padlock.Lock()
-						wpcli.BytesStreamed[remoteAddress] += int64(written)
+						wpcli.BytesStreamed[remoteAddress] += int64(len(buf[:read]))
 						wpcli.padlock.Unlock()
 					}
 				}
@@ -838,10 +849,10 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 					break Exit_Loop
 				}
 
-				written, err = conn.Write(buf[:read])
+				_, err = connWriteUTF8(conn, buf[:read])
 
 				wpcli.padlock.Lock()
-				wpcli.BytesStreamed[remoteAddress] += int64(written)
+				wpcli.BytesStreamed[remoteAddress] += int64(len(buf[:read]))
 				wpcli.padlock.Unlock()
 
 				if nil != err {
@@ -902,21 +913,19 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 				continue
 			}
 
-			utf8data := bytes.ToValidUTF8(buf[:read], nonUTF8Replacement)
-			utf8DataLength := len(utf8data)
+			atomic.AddInt64(&wpcli.BytesLogged, int64(read))
 
-			atomic.AddInt64(&wpcli.BytesLogged, int64(utf8DataLength))
-
-			written, err = logFile.Write(utf8data)
+			written, err = logFile.Write(buf[:read])
 			if nil != err {
 				log.Printf("runWpCliCmdRemote: error writing to logfle: %s\n", err.Error())
 				break
 			}
-			if written != utf8DataLength {
+			if written != read {
 				log.Printf("runWpCliCmdRemote: error writing to logfile, read %d and only wrote %d\n", read, written)
 				break
 			}
 		}
+
 		log.Println("closing logfile")
 		logFile.Sync()
 		logFile.Close()

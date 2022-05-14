@@ -1,0 +1,47 @@
+services:
+  db:
+    image: mariadb
+    volumes:
+      - db_data:/var/lib/mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: Sup3rDup3rS3cur3
+      MYSQL_DATABASE: wordpress
+      MYSQL_USER: wordpress
+      MYSQL_PASSWORD: wordpress
+
+  # This container is helpful in that it provides the WP files & creates the wp-config.php for us from the env vars
+  wordpress:
+    depends_on:
+      - db
+    image: wordpress
+    environment:
+      WORDPRESS_DB_HOST: db:3306
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: wordpress
+      WORDPRESS_DB_NAME: wordpress
+    volumes:
+      - wp_data:/var/www/html
+
+  wpcli:
+    image: "${BATCH_IMAGE_NAME:-wordpress:cli}"
+    depends_on:
+      - db
+      - wordpress
+    environment:
+      WORDPRESS_DB_HOST: db:3306
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: wordpress
+      WORDPRESS_DB_NAME: wordpress
+      WP_CLI_TOKEN: ${WP_CLI_TOKEN}
+    entrypoint: /usr/local/bin/docker-init.sh
+    volumes:
+      - wp_data:/var/www/html
+      - ./bin/cron-control-runner:/usr/local/bin/wp-cron-runner
+      - ./bin/docker-init.sh:/usr/local/bin/docker-init.sh
+    ports:
+      - "22122:22122"
+
+volumes:
+  db_data:
+  wp_data:

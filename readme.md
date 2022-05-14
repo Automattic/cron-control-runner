@@ -13,12 +13,27 @@ A Go-based runner for processing WordPress cron events, via [Cron Control](https
 cron-control-runner -debug -wp-path="/var/www/html" -wp-cli-path="/usr/local/bin/wp"
 ```
 
+### Development
+
 If you would just like to test the runner locally, can do a simpler process and even feed it mock data:
 
 ```
 cd path/to/cloned/repo/cron-control-runner
 go run . -use-mock-data -debug
 ```
+
+Another option for a more realistic test environment is provided via docker:
+
+1. Build the binary as usual (see [Installation & Usage](#installation--usage))
+    Make sure it's at the specified location (`bin/cron-control-runner` & built with the specified target params).
+1. `docker-compose up`
+
+This will spin up a clean WordPress instance and kick off an [intialization script](./bin/docker-init.sh) on the CLI container which culminates in cron-control-runner listening for connections on the host os at the usual port (`21222`).
+
+It's helpful to specify some environment variables (e.g. in an `.env` file):
+
+* You can specify the image for the cli container via the `BATCH_IMAGE_NAME` environment variable. By default, `wordpress:cli` is used.
+* You can specify the `remoteToken` value via the `WP_CLI_TOKEN` environment variable.
 
 ## Runner Options
 - `-debug`

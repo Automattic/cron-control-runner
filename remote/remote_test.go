@@ -47,7 +47,7 @@ func TestValidateCommand(t *testing.T) {
 		"media regenerate should fail":               {errString: "WP CLI command 'media regenerate' is not permitted", want: "", input: "media regenerate"},
 		"media import file should pass":              {errString: "", want: "media import https://example.com/cutekitties.png", input: "media import https://example.com/cutekitties.png"},
 		"vip support-user should fail":               {errString: "WP CLI command 'vip support-user' is not permitted", want: "", input: "vip support-user"},
-		"vip whatever shold pass":                    {errString: "", want: "vip whatever", input: "vip whatever"},
+		"vip whatever should pass":                    {errString: "", want: "vip whatever", input: "vip whatever"},
 	}
 
 	for name, tc := range tests {

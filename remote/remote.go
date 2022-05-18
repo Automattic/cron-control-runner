@@ -12,10 +12,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/creack/pty"
-	"github.com/howeyc/fsnotify"
-	"golang.org/x/crypto/ssh/terminal"
-	"golang.org/x/net/websocket"
 	"io"
 	"log"
 	"net"
@@ -31,6 +27,11 @@ import (
 	"syscall"
 	"time"
 	"unicode"
+
+	"github.com/creack/pty"
+	"github.com/howeyc/fsnotify"
+	"golang.org/x/crypto/ssh/terminal"
+	"golang.org/x/net/websocket"
 )
 
 const (
@@ -57,7 +58,7 @@ var (
 	padlock     *sync.Mutex
 	guidRegex   *regexp.Regexp
 
-	blackListed1stLevel = []string{"admin", "cli", "config", "core", "db", "dist-archive",
+	blackListed1stLevel = []string{"admin", "cli", "config", "core", "dist-archive",
 		"eval-file", "eval", "find", "i18n", "scaffold", "server", "package", "profile"}
 
 	blackListed2ndLevel = map[string][]string{
@@ -363,6 +364,15 @@ func validateCommand(calledCmd string) (string, error) {
 		}
 	}
 
+	if cmdParts[0] == "db" {
+		if cmdParts[1] != "query" {
+			return "", fmt.Errorf("WP CLI command 'db %s' is not permitted", cmdParts[1])
+		}
+		if len(cmdParts) < 3 || cmdParts[2] == "" {
+			return "", errors.New("WP CLI command 'db query' requires a query parameter")
+		}
+	}
+
 	return strings.Join(cmdParts, " "), nil
 }
 
@@ -599,7 +609,6 @@ func attachWpCliCmdRemote(conn net.Conn, wpcli *wpCLIProcess, GUID string, rows 
 				break Catchup_Loop
 			}
 
-
 			written, _, err = connWriteUTF8(conn, buf[:read])
 			if nil != err {
 				log.Printf("attachWpCliCmdRemote catchup: error writing to client connection: %s\n", err.Error())
@@ -798,11 +807,11 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 			select {
 			case <-ticker:
 				if nil == conn {
-					log.Println("runWpCliCmdRemote ticker: client connection is closed, exiting this watcher loop" )
+					log.Println("runWpCliCmdRemote ticker: client connection is closed, exiting this watcher loop")
 					break Exit_Loop
 				}
 
-				if (!wpcli.Running && wpcli.BytesStreamed[remoteAddress] >= wpcli.BytesLogged) {
+				if !wpcli.Running && wpcli.BytesStreamed[remoteAddress] >= wpcli.BytesLogged {
 					log.Println("runWpCliCmdRemote: WP CLI command finished and all data has been written, exiting this watcher loop")
 					break Exit_Loop
 				}
@@ -892,7 +901,7 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 			running := wpcli.Running
 			padlock.Unlock()
 
-			if ! running {
+			if !running {
 				log.Printf("runWpCliCmdRemote: command already finished. Stop reading WP CLI tty output")
 				break
 			}

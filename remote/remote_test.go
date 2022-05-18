@@ -19,6 +19,7 @@ func TestCheckIsJSONObject(t *testing.T) {
 		"wrong numerical key json":                  {want: false, input: ` { 1 : " wrong" } `},
 		"standard json":                             {want: true, input: `{"object":"json"}`},
 		"json with extra spacing":                   {want: true, input: `  { "object space" : "with spacing" } `},
+		"json with extra spacing -- should fail":    {want: false, input: `  { "object space" : "with spacing" } `},
 	}
 
 	for name, tc := range tests {

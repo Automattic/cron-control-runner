@@ -77,15 +77,22 @@ type config struct {
 }
 
 var remoteConfig config
+var wpCliEventSender eventSender
 
 // Setup configures the module (not super ideal, but this module needs some reworking to make it better)
-func Setup(remoteToken string, useWebsockets bool, wpCLIPath string, wpPath string) {
+func Setup(remoteToken string, useWebsockets bool, wpCLIPath string, wpPath string, eventsWebhookURL string) {
 	remoteConfig = config{
 		remoteToken:   remoteToken,
 		useWebsockets: useWebsockets,
 		wpCLIPath:     wpCLIPath,
 		wpPath:        wpPath,
 	}
+
+	wpCliEventSender = NewWebhookSender(
+		&http.Client{Timeout: 10 * time.Second},
+		eventsWebhookURL,
+		remoteToken,
+	)
 }
 
 // ListenForConnections is the entrypoint. Listens for, and processes, the remote requests.
@@ -950,6 +957,17 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 	}
 
 	log.Printf("runWpCliCmdRemote: comand finished: %s\n", GUID)
+
+	err = wpCliEventSender.send(context.Background(), commandCompleted{
+		GUID:      GUID,
+		EventType: CommandCompletedType,
+		Timestamp: time.Now().Unix(),
+		ExitCode:  state.ExitCode(),
+		Success:   state.Success(),
+	})
+	if nil != err {
+		log.Printf("runWpCliCmdRemote: failed to send event: %s\n", err.Error())
+	}
 
 	if wpcli.Running {
 		log.Println("runWpCliCmdRemote: marking the WP-CLI as finished")

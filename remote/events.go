@@ -3,10 +3,14 @@ package remote
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"time"
 )
 
 const (
@@ -30,7 +34,6 @@ func (c commandCompleted) guid() string {
 	return c.GUID
 }
 
-
 func (c commandCompleted) eventType() string {
 	return c.EventType
 }
@@ -41,8 +44,8 @@ type eventSender interface {
 
 type webhookSender struct {
 	httpClient *http.Client
-	endpoint string
-	token string
+	endpoint   string
+	token      string
 }
 
 func NewWebhookSender(client *http.Client, endpoint string, token string) *webhookSender {
@@ -50,23 +53,11 @@ func NewWebhookSender(client *http.Client, endpoint string, token string) *webho
 		httpClient: client,
 		endpoint:   endpoint,
 		token:      token,
-	};
-}
-
-type webhookData struct {
-	GUID string `json:"guid"`
-	Token string `json:"token"`
-	Event event `json:"event"`
+	}
 }
 
 func (sender *webhookSender) send(ctx context.Context, e event) error {
-	data := webhookData{
-		GUID:  e.guid(),
-		Token: sender.token,
-		Event: e,
-	}
-
-	jsonData, err := json.Marshal(data)
+	jsonData, err := json.Marshal(e)
 	if err != nil {
 		return fmt.Errorf("webhookSender failed to marshal event: %w", err)
 	}
@@ -76,8 +67,13 @@ func (sender *webhookSender) send(ctx context.Context, e event) error {
 		return fmt.Errorf("webhookSender failed to create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("guid", e.guid())
-	req.Header.Set("event", e.eventType())
+
+	signature, err := signRequestBody(sender.token, jsonData)
+	if err != nil {
+		return fmt.Errorf("webhookSender failed sign the request: %w", err)
+	}
+
+	req.Header.Set("X-WPCLI-SIGNATURE", signature)
 
 	response, err := sender.httpClient.Do(req)
 	if err != nil {
@@ -93,4 +89,17 @@ func (sender *webhookSender) send(ctx context.Context, e event) error {
 	body, _ := ioutil.ReadAll(response.Body)
 
 	return fmt.Errorf("webhookSender webhook not accepted. Status Code: %d; Body: %s", response.StatusCode, string(body))
+}
+
+func signRequestBody(token string, body []byte) (string, error) {
+	timestamp := time.Now().Unix()
+
+	key := fmt.Sprintf("%d%s%s", timestamp, token, string(body))
+
+	mac := hmac.New(sha256.New, []byte(key))
+	mac.Write(body)
+
+	signature := fmt.Sprintf("t=%d,sha256=%s", timestamp, hex.EncodeToString(mac.Sum(nil)))
+
+	return signature, nil
 }

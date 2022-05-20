@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/creack/pty"
+	"github.com/hashicorp/go-retryablehttp"
 	"github.com/howeyc/fsnotify"
 	"golang.org/x/crypto/ssh/terminal"
 	"golang.org/x/net/websocket"
@@ -88,8 +89,11 @@ func Setup(remoteToken string, useWebsockets bool, wpCLIPath string, wpPath stri
 		wpPath:        wpPath,
 	}
 
+	retryClient := retryablehttp.NewClient()
+	retryClient.RetryMax = 10
+
 	wpCliEventSender = NewWebhookSender(
-		&http.Client{Timeout: 10 * time.Second},
+		retryClient.StandardClient(),
 		eventsWebhookURL,
 		remoteToken,
 	)

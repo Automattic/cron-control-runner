@@ -22,6 +22,14 @@ type event interface {
 	eventType() string
 }
 
+type Clock interface {
+	Now() time.Time
+}
+
+type realClock struct{}
+
+func (realClock) Now() time.Time { return time.Now() }
+
 type commandCompleted struct {
 	GUID      string `json:"guid"`
 	EventType string `json:"event"`
@@ -68,7 +76,7 @@ func (sender *webhookSender) send(ctx context.Context, e event) error {
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	signature, err := signRequestBody(sender.token, jsonData)
+	signature, err := signRequestBody(sender.token, jsonData, realClock{})
 	if err != nil {
 		return fmt.Errorf("webhookSender failed sign the request: %w", err)
 	}
@@ -91,13 +99,11 @@ func (sender *webhookSender) send(ctx context.Context, e event) error {
 	return fmt.Errorf("webhookSender webhook not accepted. Status Code: %d; Body: %s", response.StatusCode, string(body))
 }
 
-func signRequestBody(token string, body []byte) (string, error) {
-	timestamp := time.Now().Unix()
-
-	key := fmt.Sprintf("%d%s%s", timestamp, token, string(body))
-
-	mac := hmac.New(sha256.New, []byte(key))
-	mac.Write(body)
+func signRequestBody(token string, body []byte, clock Clock) (string, error) {
+	timestamp := clock.Now().Unix()
+	mac := hmac.New(sha256.New, []byte(token))
+	payload := fmt.Sprintf("%d%s", timestamp, string(body))
+	mac.Write([]byte(payload))
 
 	signature := fmt.Sprintf("t=%d,sha256=%s", timestamp, hex.EncodeToString(mac.Sum(nil)))
 

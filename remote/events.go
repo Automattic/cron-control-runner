@@ -99,6 +99,17 @@ func (sender *webhookSender) send(ctx context.Context, e event) error {
 	return fmt.Errorf("webhookSender webhook not accepted. Status Code: %d; Body: %s", response.StatusCode, string(body))
 }
 
+type nopSender struct {
+}
+
+func NewNopSender() *nopSender {
+	return &nopSender{}
+}
+
+func (sender *nopSender) send(ctx context.Context, e event) error {
+	return nil
+}
+
 func signRequestBody(token string, body []byte, clock Clock) (string, error) {
 	timestamp := clock.Now().Unix()
 	mac := hmac.New(sha256.New, []byte(token))

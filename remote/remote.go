@@ -89,14 +89,26 @@ func Setup(remoteToken string, useWebsockets bool, wpCLIPath string, wpPath stri
 		wpPath:        wpPath,
 	}
 
-	retryClient := retryablehttp.NewClient()
-	retryClient.RetryMax = 10
-
-	wpCliEventSender = NewWebhookSender(
-		retryClient.StandardClient(),
-		eventsWebhookURL,
+	wpCliEventSender = setupWebhookSender(
 		remoteToken,
+		eventsWebhookURL,
 	)
+}
+
+func setupWebhookSender(remoteToken string, eventsWebhookURL string) eventSender {
+	if eventsWebhookURL != "" {
+		retryClient := retryablehttp.NewClient()
+		retryClient.RetryMax = 10
+
+		return NewWebhookSender(
+			retryClient.StandardClient(),
+			eventsWebhookURL,
+			remoteToken,
+		)
+	}
+
+	log.Println("using nop event sender")
+	return NewNopSender()
 }
 
 // ListenForConnections is the entrypoint. Listens for, and processes, the remote requests.
@@ -610,7 +622,6 @@ func attachWpCliCmdRemote(conn net.Conn, wpcli *wpCLIProcess, GUID string, rows 
 				break Catchup_Loop
 			}
 
-
 			written, _, err = connWriteUTF8(conn, buf[:read])
 			if nil != err {
 				log.Printf("attachWpCliCmdRemote catchup: error writing to client connection: %s\n", err.Error())
@@ -809,11 +820,11 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 			select {
 			case <-ticker:
 				if nil == conn {
-					log.Println("runWpCliCmdRemote ticker: client connection is closed, exiting this watcher loop" )
+					log.Println("runWpCliCmdRemote ticker: client connection is closed, exiting this watcher loop")
 					break Exit_Loop
 				}
 
-				if (!wpcli.Running && wpcli.BytesStreamed[remoteAddress] >= wpcli.BytesLogged) {
+				if !wpcli.Running && wpcli.BytesStreamed[remoteAddress] >= wpcli.BytesLogged {
 					log.Println("runWpCliCmdRemote: WP CLI command finished and all data has been written, exiting this watcher loop")
 					break Exit_Loop
 				}
@@ -903,7 +914,7 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 			running := wpcli.Running
 			padlock.Unlock()
 
-			if ! running {
+			if !running {
 				log.Printf("runWpCliCmdRemote: command already finished. Stop reading WP CLI tty output")
 				break
 			}

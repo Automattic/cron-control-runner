@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	CommandCompletedType = "COMMAND_COMPLETED"
+	CommandCompletedType = "command-completed"
 )
 
 type event interface {
@@ -105,7 +105,6 @@ func signRequestBody(token string, body []byte, clock Clock) (string, error) {
 	payload := fmt.Sprintf("%d%s", timestamp, string(body))
 	mac.Write([]byte(payload))
 
-	signature := fmt.Sprintf("t=%d,sha256=%s", timestamp, hex.EncodeToString(mac.Sum(nil)))
-
+	signature := fmt.Sprintf("ts=%d;sha256=%s", timestamp, hex.EncodeToString(mac.Sum(nil)))
 	return signature, nil
 }

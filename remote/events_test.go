@@ -45,7 +45,7 @@ func TestWebhookSender(t *testing.T) {
 				t.Fatalf("GUID=%x, want %x", got, want)
 			}
 
-			if got, want := aux.EventType, "COMMAND_COMPLETED"; got != want {
+			if got, want := aux.EventType, CommandCompletedType; got != want {
 				t.Fatalf("Event=%x, want %x", got, want)
 			}
 
@@ -89,6 +89,51 @@ func TestWebhookSender(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
+
+	t.Run("ErrHttpRequest", func(t *testing.T) {
+		wpCliEventSender := NewWebhookSender(
+			&http.Client{},
+			"http://invalidWebHook",
+			token,
+		)
+
+		err := wpCliEventSender.send(context.Background(), commandCompleted{
+			GUID:      "123",
+			EventType: CommandCompletedType,
+			Timestamp: expectedTimestamp,
+			ExitCode:  0,
+			Success:   true,
+		})
+		if err == nil || !strings.Contains(err.Error(), `webhookSender error sending request to API endpoint`) {
+			t.Fatalf("unexpected error: %s", err)
+		}
+	})
+
+	t.Run("ErrHttpRequestNotOK", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte("ERROR"))
+		}))
+		defer server.Close()
+
+		wpCliEventSender := NewWebhookSender(
+			&http.Client{},
+			server.URL,
+			token,
+		)
+
+		err := wpCliEventSender.send(context.Background(), commandCompleted{
+			GUID:      "123",
+			EventType: CommandCompletedType,
+			Timestamp: expectedTimestamp,
+			ExitCode:  0,
+			Success:   true,
+		})
+
+		if err == nil || err.Error() != "webhookSender webhook not accepted. Status Code: 400; Body: ERROR" {
+			t.Fatalf("unexpected error: %s", err)
+		}
+	})
 }
 
 func TestSignRequestBody(t *testing.T) {
@@ -104,7 +149,7 @@ func TestSignRequestBody(t *testing.T) {
 	}
 	signature, _ := signRequestBody(token, body, mockClock{})
 
-	if signature != "t=1653231519,sha256=8a5bfd544cef4a0dc863ee1ab4fe63598bed91b7daacc8f380330dc0e7ea2e1b" {
+	if signature != "ts=1653231519;sha256=f369b71ff6d61aeb5c152f05cbbde90158ff16008898a602f3ab004082d359e5" {
 		t.Fatal("Signature not calculated correctly")
 	}
 }

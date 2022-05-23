@@ -962,16 +962,22 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 
 	log.Printf("runWpCliCmdRemote: comand finished: %s\n", GUID)
 
-	err = wpCliEventSender.send(context.Background(), commandCompleted{
-		GUID:      GUID,
-		EventType: CommandCompletedType,
-		Timestamp: time.Now().Unix(),
-		ExitCode:  state.ExitCode(),
-		Success:   state.Success(),
-	})
-	if nil != err {
-		log.Printf("runWpCliCmdRemote: failed to send event: %s\n", err.Error())
-	}
+	go func() {
+		err = wpCliEventSender.send(context.Background(), commandCompleted{
+			GUID:      GUID,
+			EventType: CommandCompletedType,
+			Timestamp: time.Now().Unix(),
+			ExitCode:  state.ExitCode(),
+			Success:   state.Success(),
+		})
+		if nil != err {
+			log.Printf("runWpCliCmdRemote: failed to send event for GUID %s: %s\n", GUID, err.Error())
+
+			return
+		}
+
+		log.Printf("runWpCliCmdRemote: sent command completed event for GUID %s\n", GUID)
+	}()
 
 	if wpcli.Running {
 		log.Println("runWpCliCmdRemote: marking the WP-CLI as finished")

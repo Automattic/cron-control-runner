@@ -90,14 +90,26 @@ func Setup(remoteToken string, useWebsockets bool, wpCLIPath string, wpPath stri
 		wpPath:        wpPath,
 	}
 
-	retryClient := retryablehttp.NewClient()
-	retryClient.RetryMax = 10
-
-	wpCliEventSender = NewWebhookSender(
-		retryClient.StandardClient(),
-		eventsWebhookURL,
+	wpCliEventSender = setupWebhookSender(
 		remoteToken,
+		eventsWebhookURL,
 	)
+}
+
+func setupWebhookSender(remoteToken string, eventsWebhookURL string) eventSender {
+	if eventsWebhookURL != "" {
+		retryClient := retryablehttp.NewClient()
+		retryClient.RetryMax = 10
+
+		return NewWebhookSender(
+			retryClient.StandardClient(),
+			eventsWebhookURL,
+			remoteToken,
+		)
+	}
+
+	log.Println("using nop event sender")
+	return NewNopSender()
 }
 
 // ListenForConnections is the entrypoint. Listens for, and processes, the remote requests.

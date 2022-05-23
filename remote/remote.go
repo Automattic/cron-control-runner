@@ -59,7 +59,7 @@ var (
 	padlock     *sync.Mutex
 	guidRegex   *regexp.Regexp
 
-	blackListed1stLevel = []string{"admin", "cli", "config", "core", "db", "dist-archive",
+	blackListed1stLevel = []string{"admin", "cli", "config", "core", "dist-archive",
 		"eval-file", "eval", "find", "i18n", "scaffold", "server", "package", "profile"}
 
 	blackListed2ndLevel = map[string][]string{
@@ -384,6 +384,15 @@ func validateCommand(calledCmd string) (string, error) {
 				strings.ToLower(strings.TrimSpace(cmdParts[1])) == subCommand {
 				return "", fmt.Errorf("WP CLI command '%s %s' is not permitted", command, subCommand)
 			}
+		}
+	}
+
+	if cmdParts[0] == "db" {
+		if cmdParts[1] != "query" {
+			return "", fmt.Errorf("WP CLI command 'db %s' is not permitted", cmdParts[1])
+		}
+		if len(cmdParts) < 3 || cmdParts[2] == "" {
+			return "", errors.New("WP CLI command 'db query' requires a query parameter")
 		}
 	}
 

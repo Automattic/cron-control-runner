@@ -24,7 +24,8 @@ wp core install \
 
 /usr/local/bin/wp-cron-runner \
     -debug=true \
-    -token=$WP_CLI_TOKEN \
+    -token="$WP_CLI_TOKEN" \
+    -events-webhook-url="$WP_CLI_EVENTS_WEBHOOK_URL" \
     -use-websockets=true \
     -wp-cli-path=/usr/local/bin/wp \
     -wp-path=/var/www/html

@@ -28,6 +28,7 @@ type options struct {
 	orchestratorConfig    orchestrator.Config
 	remoteToken           string
 	useWebsockets         bool
+	eventsWebhookURL      string
 	useLocker             bool
 	dataConfigPath        string
 	lockerRefreshInterval time.Duration
@@ -77,7 +78,7 @@ func main() {
 	// Setup the remote CLI module if enabled.
 	if 0 < len(options.remoteToken) {
 		// TODO: This module could definitely use some general refactoring, but namely a graceful shutdown would be good.
-		remote.Setup(options.remoteToken, options.useWebsockets, options.wpCLIPath, options.wpPath)
+		remote.Setup(options.remoteToken, options.useWebsockets, options.wpCLIPath, options.wpPath, options.eventsWebhookURL)
 		go remote.ListenForConnections()
 	}
 
@@ -136,6 +137,7 @@ func getCliOptions() options {
 	// Used for remote CLI
 	flag.StringVar(&(options.remoteToken), "token", options.remoteToken, "Token to authenticate remote WP CLI requests")
 	flag.BoolVar(&(options.useWebsockets), "use-websockets", options.useWebsockets, "Use the websocket listener instead of raw tcp for remote WP CLI requests")
+	flag.StringVar(&(options.eventsWebhookURL), "events-webhook-url", options.eventsWebhookURL, "Webhook URL used to send WP CLI events")
 
 	// NOTE: this will exit if options are invalid or if help is requested, etc.
 	flag.Parse()

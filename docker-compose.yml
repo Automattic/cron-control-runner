@@ -33,6 +33,7 @@ services:
       WORDPRESS_DB_USER: wordpress
       WORDPRESS_DB_PASSWORD: wordpress
       WORDPRESS_DB_NAME: wordpress
+      WP_CLI_EVENTS_WEBHOOK_URL: ${WP_CLI_EVENTS_WEBHOOK_URL}
       WP_CLI_TOKEN: ${WP_CLI_TOKEN}
     entrypoint: /usr/local/bin/docker-init.sh
     volumes:
@@ -41,6 +42,8 @@ services:
       - ./bin/docker-init.sh:/usr/local/bin/docker-init.sh
     ports:
       - "22122:22122"
+    extra_hosts:
+      - host.docker.internal:host-gateway
 
 volumes:
   db_data:

@@ -29,6 +29,7 @@ import (
 	"unicode"
 
 	"github.com/creack/pty"
+	"github.com/hashicorp/go-retryablehttp"
 	"github.com/howeyc/fsnotify"
 	"golang.org/x/crypto/ssh/terminal"
 	"golang.org/x/net/websocket"
@@ -78,15 +79,37 @@ type config struct {
 }
 
 var remoteConfig config
+var wpCliEventSender eventSender
 
 // Setup configures the module (not super ideal, but this module needs some reworking to make it better)
-func Setup(remoteToken string, useWebsockets bool, wpCLIPath string, wpPath string) {
+func Setup(remoteToken string, useWebsockets bool, wpCLIPath string, wpPath string, eventsWebhookURL string) {
 	remoteConfig = config{
 		remoteToken:   remoteToken,
 		useWebsockets: useWebsockets,
 		wpCLIPath:     wpCLIPath,
 		wpPath:        wpPath,
 	}
+
+	wpCliEventSender = setupWebhookSender(
+		remoteToken,
+		eventsWebhookURL,
+	)
+}
+
+func setupWebhookSender(remoteToken string, eventsWebhookURL string) eventSender {
+	if eventsWebhookURL != "" {
+		retryClient := retryablehttp.NewClient()
+		retryClient.RetryMax = 10
+
+		return NewWebhookSender(
+			retryClient.StandardClient(),
+			eventsWebhookURL,
+			remoteToken,
+		)
+	}
+
+	log.Println("using nop event sender")
+	return NewNopSender()
 }
 
 // ListenForConnections is the entrypoint. Listens for, and processes, the remote requests.
@@ -959,6 +982,23 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 	}
 
 	log.Printf("runWpCliCmdRemote: comand finished: %s\n", GUID)
+
+	go func() {
+		err = wpCliEventSender.send(context.Background(), commandCompleted{
+			GUID:      GUID,
+			EventType: CommandCompletedType,
+			Timestamp: time.Now().Unix(),
+			ExitCode:  state.ExitCode(),
+			Success:   state.Success(),
+		})
+		if nil != err {
+			log.Printf("runWpCliCmdRemote: failed to send event for GUID %s: %s\n", GUID, err.Error())
+
+			return
+		}
+
+		log.Printf("runWpCliCmdRemote: sent command completed event for GUID %s\n", GUID)
+	}()
 
 	if wpcli.Running {
 		log.Println("runWpCliCmdRemote: marking the WP-CLI as finished")

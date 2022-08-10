@@ -433,7 +433,7 @@ func getCleanWpCliArgumentArray(wpCliCmdString string) ([]string, error) {
 
 	// Remove quotes from the args
 	for i := range cleanArgs {
-		if !isJSONObject(cleanArgs[i]) { //don't alter JSON arguments
+		if !isJSONObjectOrArray(cleanArgs[i]) { //don't alter JSON arguments
 			cleanArgs[i] = strings.ReplaceAll(cleanArgs[i], "\"", "")
 		}
 	}
@@ -1114,10 +1114,54 @@ func isJSON(str string) bool {
 	return json.Valid([]byte(str))
 }
 
-func isJSONObject(str string) bool {
-	trimmedStr := strings.TrimSpace(str)
-	if !strings.HasPrefix(trimmedStr, "{") || !strings.HasSuffix(trimmedStr, "}") {
+// See: https://stackoverflow.com/a/55017470
+func jsonType(str string) (string, error) {
+	if !isJSON(str) {
+		return "", errors.New("input is not valid JSON")
+	}
+	in := strings.NewReader(str)
+	dec := json.NewDecoder(in)
+	// Get just the first valid JSON token from input
+	t, err := dec.Token()
+	if err != nil {
+		return "token error!", err
+	}
+	if d, ok := t.(json.Delim); ok {
+		// The first token is a delimiter, so this is an array or an object
+		switch d {
+		case '[':
+			return "array", nil
+		case '{':
+			return "object", nil
+		default:
+			return "", errors.New("unexpected delimiter")
+		}
+	}
+	return "", errors.New("input does not represent a JSON object or array")
+}
+
+func contains(haystack []string, needle string) bool {
+	for _, s := range haystack {
+		if s == needle {
+			return true
+		}
+	}
+	return false
+}
+
+func isJSONObjectOrArray(str string) bool {
+	var _str = str
+
+	// The type checking is intolerant of single quotes, strip them before checking if present
+	strlen := len(str)
+	if strlen >= 2 && str[0:1] == "'" && str[strlen-1:] == "'" {
+		_str = str[1 : strlen-1]
+	}
+	t, err := jsonType(_str)
+	if err != nil {
+		//fmt.Printf("%v doesn't parse\n", str)
 		return false
 	}
-	return isJSON(str)
+
+	return contains([]string{"object", "array"}, t)
 }

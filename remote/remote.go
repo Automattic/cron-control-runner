@@ -1159,7 +1159,6 @@ func isJSONObjectOrArray(str string) bool {
 	}
 	t, err := jsonType(_str)
 	if err != nil {
-		//fmt.Printf("%v doesn't parse\n", str)
 		return false
 	}
 

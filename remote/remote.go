@@ -749,7 +749,7 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 	cmdArgs = append(cmdArgs, cleanArgs...)
 
 	cmd := exec.Command(remoteConfig.wpCLIPath, cmdArgs...)
-	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
+	cmd.Env = append(os.Environ(), "TERM=xterm-256color", "LESSSECURE=1")
 
 	log.Printf("launching %s - rows: %d, cols: %d, args: %s\n", GUID, rows, cols, strings.Join(cmdArgs, " "))
 

@@ -58,17 +58,6 @@ var (
 	gGUIDttys   map[string]*wpCLIProcess
 	padlock     *sync.Mutex
 	guidRegex   *regexp.Regexp
-
-	blackListed1stLevel = []string{"admin", "cli", "config", "core", "dist-archive",
-		"eval-file", "eval", "find", "i18n", "scaffold", "server", "package", "profile"}
-
-	blackListed2ndLevel = map[string][]string{
-		"media":    {"regenerate"},
-		"theme":    {"install", "update", "delete"},
-		"plugin":   {"install", "update", "delete"},
-		"language": {"install", "update", "delete"},
-		"vip":      {"support-user"},
-	}
 )
 
 type config struct {
@@ -368,23 +357,8 @@ func validateCommand(calledCmd string) (string, error) {
 		return "", errors.New("WP CLI command not sent")
 	}
 
-	for _, command := range blackListed1stLevel {
-		if strings.ToLower(strings.TrimSpace(cmdParts[0])) == command {
-			return "", fmt.Errorf("WP CLI command '%s' is not permitted", command)
-		}
-	}
-
 	if 1 == len(cmdParts) {
 		return strings.TrimSpace(cmdParts[0]), nil
-	}
-
-	for command, blacklistedMap := range blackListed2ndLevel {
-		for _, subCommand := range blacklistedMap {
-			if strings.ToLower(strings.TrimSpace(cmdParts[0])) == command &&
-				strings.ToLower(strings.TrimSpace(cmdParts[1])) == subCommand {
-				return "", fmt.Errorf("WP CLI command '%s %s' is not permitted", command, subCommand)
-			}
-		}
 	}
 
 	return strings.Join(cmdParts, " "), nil

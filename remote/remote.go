@@ -387,15 +387,6 @@ func validateCommand(calledCmd string) (string, error) {
 		}
 	}
 
-	if cmdParts[0] == "db" {
-		if cmdParts[1] != "query" {
-			return "", fmt.Errorf("WP CLI command 'db %s' is not permitted", cmdParts[1])
-		}
-		if len(cmdParts) < 3 || cmdParts[2] == "" {
-			return "", errors.New("WP CLI command 'db query' requires a query parameter")
-		}
-	}
-
 	return strings.Join(cmdParts, " "), nil
 }
 

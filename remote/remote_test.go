@@ -5,30 +5,76 @@ import (
 	"testing"
 )
 
-func TestCheckIsJSONObject(t *testing.T) {
+func TestCheckIsJSONObjectOrArray(t *testing.T) {
 	tests := map[string]struct {
 		input string
 		want  bool
 	}{
-		"normal text with no quotes":                {want: false, input: "normal text"},
-		"array object":                              {want: false, input: "[1,2,3]"},
-		"valid json string that should be excluded": {want: false, input: `"normal text inside quotes"`},
-		"missing quotes json":                       {want: false, input: `{"broken":json"}`},
-		"json inside extra quotes":                  {want: false, input: `"{"broken":"json"}"`},
-		"missing closing parenthesis":               {want: false, input: `{"broken":"json object"`},
-		"wrong numerical key json":                  {want: false, input: ` { 1 : " wrong" } `},
-		"standard json":                             {want: true, input: `{"object":"json"}`},
-		"json with extra spacing":                   {want: true, input: `  { "object space" : "with spacing" } `},
+		"empty string":                                {want: false, input: ""},
+		"just single quotes":                          {want: false, input: "''"},
+		"just double quotes":                          {want: false, input: `""`},
+		"normal text with no quotes":                  {want: false, input: "normal text"},
+		"number with no quotes":                       {want: false, input: "123456"},
+		"normal text inside double quotes":            {want: false, input: `"normal text inside quotes"`},
+		"normal text inside single quotes":            {want: false, input: "'normal text inside quotes'"},
+		"normal text inside double quotes w/ padding": {want: false, input: `   "normal text inside quotes"    `},
+		"normal text inside single quotes w/ padding": {want: false, input: "   'normal text inside quotes'    "},
+		"missing quotes json":                         {want: false, input: `{"broken":json"}`},
+		"json inside extra quotes":                    {want: false, input: `"{"broken":"json"}"`},
+		"missing closing parenthesis":                 {want: false, input: `{"broken":"json object"`},
+		"wrong numerical key json":                    {want: false, input: ` { 1 : " wrong" } `},
+		"array object":                                {want: true, input: "[1,2,3]"},
+		"array object with strings":                   {want: true, input: "[\"a\",\"b\",\"c\"]"},
+		"array object with strings & padding":         {want: true, input: "  [\"a\",\"b\",\"c\"]    "},
+		"standard json":                               {want: true, input: `{"object":"json"}`},
+		"json with extra spacing":                     {want: true, input: `  { "object space" : "with spacing" } `},
+		"empty array should be true":                  {want: true, input: "[]"},
+		"empty object should be true":                 {want: true, input: "{}"},
+		"object surrounded with single quotes":        {want: true, input: `'{"object":"json"}'`},
 	}
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			got := isJSONObject(tc.input)
+			got := isJSONObjectOrArray(tc.input)
 			if !reflect.DeepEqual(tc.want, got) {
-				t.Fatalf("testing '%v' isJSONObject(\"%v\") expected: %v, got: %v", name, tc.input, tc.want, got)
+				t.Fatalf("testing '%v' isJSONObjectOrArray(\"%v\") expected: %v, got: %v", name, tc.input, tc.want, got)
 			}
 		})
 	}
+}
+
+func TestGetCleanWpCliArgumentArray(t *testing.T) {
+	tests := map[string]struct {
+		errString string
+		input     string
+		want      []string
+	}{
+		"vip whatever should not be changed":                                          {errString: "", want: []string{"vip", "whatever"}, input: "vip whatever"},
+		"wp option update with array should not be changed":                           {errString: "", want: []string{"wp", "option", "update", "someoption", `["stuff","things"]`, "--format=json"}, input: "wp option update someoption [\"stuff\",\"things\"] --format=json"},
+		"wp option update with array wrapped in single quotes should not be changed":  {errString: "", want: []string{"wp", "option", "update", "someoption", `'["stuff","things"]'`, "--format=json"}, input: "wp option update someoption '[\"stuff\",\"things\"]' --format=json"},
+		"wp option update with object should not be changed":                          {errString: "", want: []string{"wp", "option", "update", "someoption", `{"val1":"stuff","val2":"things"}`, "--format=json"}, input: "wp option update someoption {\"val1\":\"stuff\",\"val2\":\"things\"} --format=json"},
+		"wp option update with object wrapped in single quotes should not be changed": {errString: "", want: []string{"wp", "option", "update", "someoption", `'{"val1":"stuff","val2":"things"}'`, "--format=json"}, input: "wp option update someoption '{\"val1\":\"stuff\",\"val2\":\"things\"}' --format=json"},
+		"wp option update with quotes in value should be changed":                     {errString: "", want: []string{"wp", "option", "update", "someoption", `stuff,things`}, input: "wp option update someoption \"stuff\",\"things\""},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			got, err := getCleanWpCliArgumentArray(tc.input)
+
+			if err != nil && tc.errString != err.Error() {
+				t.Fatalf("testing '%v' getCleanWpCliArgumentArray(\"%v\") expected error: %v, got: %v", name, tc.input, tc.errString, err.Error())
+			}
+
+			if err == nil && tc.errString != "" {
+				t.Fatalf("testing '%v' getCleanWpCliArgumentArray(\"%v\") expected error string: %v, got: nil", name, tc.input, tc.errString)
+			}
+
+			if !reflect.DeepEqual(tc.want, got) {
+				t.Fatalf("testing '%v' getCleanWpCliArgumentArray(\"%v\") expected:\n\t%v\ngot:\n\t%v", name, tc.input, tc.want, got)
+			}
+		})
+	}
+
 }
 
 func TestValidateCommand(t *testing.T) {

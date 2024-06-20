@@ -1,0 +1,54 @@
+name: Prepare Release
+
+on:
+  push:
+    tags:
+      - '**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prepare_release:
+    name: Prepare Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        run: |
+          GOARCH=amd64 go build -o bin/cron-control-runner-linux-amd64 main.go
+          GOARCH=arm64 go build -o bin/cron-control-runner-linux-arm64 main.go
+        env:
+          CGO_ENABLED: 0
+          GOOS: linux
+
+      - name: Attest build provenance
+        id: attest
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: |
+            bin/cron-control-runner-linux-amd64
+            bin/cron-control-runner-linux-arm64
+
+      - name: Generate provenance file
+        run: |
+          jq .dsseEnvelope "${{ steps.attest.outputs.bundle-path }}" > bin/cron-control-runner.intoto.jsonl
+
+      - name: Create a release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            bin/cron-control-runner-linux-amd64
+            bin/cron-control-runner-linux-arm64
+            bin/cron-control-runner.intoto.jsonl

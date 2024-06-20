@@ -3,8 +3,6 @@ package performer
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/Automattic/cron-control-runner/logger"
-	"github.com/Automattic/cron-control-runner/metrics"
 	"io"
 	"math/rand"
 	"net/http"
@@ -12,6 +10,9 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/Automattic/cron-control-runner/logger"
+	"github.com/Automattic/cron-control-runner/metrics"
 
 	"github.com/yookoala/gofast"
 )
@@ -58,12 +59,17 @@ func NewCLI(wpCLIPath string, wpPath string, fpmURL string, metrics metrics.Mana
 	if fpmURL != "" {
 		var err error
 		parsedURL, err := url.Parse(fpmURL)
-		if err != nil || parsedURL == nil || parsedURL.Scheme != "unix" || parsedURL.Path == "" {
+		if err != nil || parsedURL == nil || (parsedURL.Scheme == "unix" && parsedURL.Path == "") || ((parsedURL.Scheme == "tcp" || parsedURL.Scheme == "tcp4" || parsedURL.Scheme == "tcp6") && parsedURL.Host == "") {
 			logger.Errorf("problem parsing FPM url %q: %v", fpmURL, err)
 			panic(err)
 		}
 		logger.Infof("Using FPM runtime at %q", parsedURL)
-		performer.fpm = gofast.SimpleClientFactory(gofast.SimpleConnFactory(parsedURL.Scheme, parsedURL.Path))
+		proto := parsedURL.Scheme
+		address := parsedURL.Host
+		if proto == "unix" {
+			address = parsedURL.Path
+		}
+		performer.fpm = gofast.SimpleClientFactory(gofast.SimpleConnFactory(proto, address))
 	}
 
 	return performer

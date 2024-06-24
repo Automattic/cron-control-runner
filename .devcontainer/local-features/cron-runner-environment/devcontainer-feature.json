@@ -1,0 +1,9 @@
+{
+    "id": "cron-runner-environment",
+    "version": "1.0.0",
+    "name": "Cron Runner Environment",
+    "installsAfter": [
+        "ghcr.io/automattic/vip-codespaces/nginx",
+        "ghcr.io/automattic/vip-codespaces/wordpress"
+    ]
+}

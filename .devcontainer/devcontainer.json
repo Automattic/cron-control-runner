@@ -1,0 +1,30 @@
+{
+	"name": "Go",
+	"image": "mcr.microsoft.com/devcontainers/go:1-1.22-bookworm",
+	"forwardPorts": [80, 4444],
+	"features": {
+		"ghcr.io/devcontainers/features/github-cli:1": {},
+		"ghcr.io/automattic/vip-codespaces/entrypoints": {},
+		"ghcr.io/automattic/vip-codespaces/nginx": {},
+		"ghcr.io/automattic/vip-codespaces/mariadb": {},
+		"ghcr.io/automattic/vip-codespaces/php": {
+			"lite-install": true,
+			"skip-gmagick": true
+		},
+		"ghcr.io/automattic/vip-codespaces/wp-cli": {},
+		"ghcr.io/automattic/vip-codespaces/wordpress": {},
+		"./local-features/cron-runner-environment": {}
+	},
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"dlech.chmod",
+				"zhiayang.tabindentspacealign",
+				"GitHub.copilot",
+				"GitHub.copilot-chat",
+				"github.vscode-github-actions",
+				"ms-vsliveshare.vsliveshare"
+			]
+		}
+	}
+}

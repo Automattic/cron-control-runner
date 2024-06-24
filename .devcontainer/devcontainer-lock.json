@@ -1,0 +1,39 @@
+{
+  "features": {
+    "ghcr.io/automattic/vip-codespaces/entrypoints": {
+      "version": "1.0.0",
+      "resolved": "ghcr.io/automattic/vip-codespaces/entrypoints@sha256:b153687ebd808007d2d5355722ee952cfdc0ca26533b2e19f9547ccc3d440df3",
+      "integrity": "sha256:b153687ebd808007d2d5355722ee952cfdc0ca26533b2e19f9547ccc3d440df3"
+    },
+    "ghcr.io/automattic/vip-codespaces/mariadb": {
+      "version": "1.3.0",
+      "resolved": "ghcr.io/automattic/vip-codespaces/mariadb@sha256:3b6011b207c57103de397c8e231fc4a7faa9b476b9ff5caf0ebf0b1a68ac5575",
+      "integrity": "sha256:3b6011b207c57103de397c8e231fc4a7faa9b476b9ff5caf0ebf0b1a68ac5575"
+    },
+    "ghcr.io/automattic/vip-codespaces/nginx": {
+      "version": "1.3.0",
+      "resolved": "ghcr.io/automattic/vip-codespaces/nginx@sha256:4706f4cfc531fe259401ba3942b72a7701fc231c695329ddc332fd56198db797",
+      "integrity": "sha256:4706f4cfc531fe259401ba3942b72a7701fc231c695329ddc332fd56198db797"
+    },
+    "ghcr.io/automattic/vip-codespaces/php": {
+      "version": "2.5.1",
+      "resolved": "ghcr.io/automattic/vip-codespaces/php@sha256:d399a6b07be5532bfc3f1a8946d5d32329283027fb0843a3b583b44ac84b5f97",
+      "integrity": "sha256:d399a6b07be5532bfc3f1a8946d5d32329283027fb0843a3b583b44ac84b5f97"
+    },
+    "ghcr.io/automattic/vip-codespaces/wordpress": {
+      "version": "2.4.0",
+      "resolved": "ghcr.io/automattic/vip-codespaces/wordpress@sha256:238fb47a25a017b7fbe471cf14cdfb20e05e086a621260bf14956af85f9c17e7",
+      "integrity": "sha256:238fb47a25a017b7fbe471cf14cdfb20e05e086a621260bf14956af85f9c17e7"
+    },
+    "ghcr.io/automattic/vip-codespaces/wp-cli": {
+      "version": "1.1.3",
+      "resolved": "ghcr.io/automattic/vip-codespaces/wp-cli@sha256:53d86865b61f6448fa76ff1dfcfd304ff79c6836efe63e685a30263442a5f898",
+      "integrity": "sha256:53d86865b61f6448fa76ff1dfcfd304ff79c6836efe63e685a30263442a5f898"
+    },
+    "ghcr.io/devcontainers/features/github-cli:1": {
+      "version": "1.0.12",
+      "resolved": "ghcr.io/devcontainers/features/github-cli@sha256:183d18b42de353e3689615fd21eb67427bc1f763c5b830c2798dcbb993da2049",
+      "integrity": "sha256:183d18b42de353e3689615fd21eb67427bc1f763c5b830c2798dcbb993da2049"
+    }
+  }
+}

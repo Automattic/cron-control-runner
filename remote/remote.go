@@ -348,20 +348,38 @@ func authenticateProtocolHeader2(data []byte) (string, string, uint16, uint16, i
 }
 
 func validateCommand(calledCmd string) (string, error) {
+	// Check if the command is empty after trimming whitespace
 	if 0 == len(strings.TrimSpace(calledCmd)) {
 		return "", errors.New("No WP CLI command specified")
 	}
 
-	cmdParts := strings.Fields(strings.TrimSpace(calledCmd))
-	if 0 == len(cmdParts) {
+	// Trim the command and split it into parts while preserving line breaks!
+	cmdParts := strings.Split(calledCmd, "\n")
+
+	// preapring collect valid command parts
+	var validCmdParts []string
+	for _, part := range cmdParts {
+		trimmedPart := strings.TrimSpace(part)
+		if 0 < len(trimmedPart) {
+			validCmdParts = append(validCmdParts, trimmedPart)
+		}
+	}
+
+	// Check if any valid command parts were found
+	if 0 == len(validCmdParts) {
 		return "", errors.New("WP CLI command not sent")
 	}
 
-	if 1 == len(cmdParts) {
-		return strings.TrimSpace(cmdParts[0]), nil
+	log.Println("++++++++++++++++ original cmd!, %s", calledCmd)
+	log.Println("++++++++++++++++ joint cmd parts!, %s", strings.Join(validCmdParts, "\n"))
+	log.Println("++++++++++++++++ cmd 0!, %s", validCmdParts[0])
+
+	// Return the joined command while preserving line breaks
+	if 1 == len(validCmdParts) {
+		return validCmdParts[0], nil // Return the first part if only one
 	}
 
-	return strings.Join(cmdParts, " "), nil
+	return strings.Join(validCmdParts, "\n"), nil // Join with line breaks if multiple parts
 }
 
 func getCleanWpCliArgumentArray(wpCliCmdString string) ([]string, error) {

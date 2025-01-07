@@ -37,8 +37,9 @@ func TestValidateCommand(t *testing.T) {
 		input     string
 		want      string
 	}{
-		"media import file should pass":              {errString: "", want: "media import https://example.com/cutekitties.png", input: "media import https://example.com/cutekitties.png"},
-		"vip whatever should pass":                   {errString: "", want: "vip whatever", input: "vip whatever"},
+		"media import file should pass": {errString: "", want: "media import https://example.com/cutekitties.png", input: "media import https://example.com/cutekitties.png"},
+		"vip whatever should pass":      {errString: "", want: "vip whatever", input: "vip whatever"},
+		"quoting should work":           {errString: "", want: `vip option update xyz_vipcli_quote "cow says \"moo\""`, input: `vip option update xyz_vipcli_quote "cow says \"moo\""`},
 	}
 
 	for name, tc := range tests {
@@ -54,6 +55,36 @@ func TestValidateCommand(t *testing.T) {
 			}
 
 			if tc.want != got {
+				t.Fatalf("testing '%v' validateCommand(\"%v\") expected: %v, got: %v", name, tc.input, tc.want, got)
+			}
+		})
+	}
+}
+
+func TestGetCleanWpCliArgumentArray(t *testing.T) {
+	tests := map[string]struct {
+		errString string
+		input     string
+		want      []string
+	}{
+		"media import file should pass": {errString: "", want: []string{"media", "import", "https://example.com/cutekitties.png"}, input: "media import https://example.com/cutekitties.png"},
+		"json arguments should work":    {errString: "", want: []string{"post", "meta", "update", "1", "custom_option", `'{"name":"Some text with spaces","version":0}'`}, input: `post meta update 1 custom_option '{\"name\":\"Some text with spaces\",\"version\":0}'`},
+		"quoting should work":           {errString: "", want: []string{"vip", "option", "update", "xyz_vipcli_quote", `"cow says \"moo\""`}, input: `vip option update xyz_vipcli_quote "cow says \"moo\""`},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			got, err := getCleanWpCliArgumentArray(tc.input)
+
+			if err != nil && tc.errString != err.Error() {
+				t.Fatalf("testing '%v' validateCommand(\"%v\") expected error: %v, got: %v", name, tc.input, tc.errString, err.Error())
+			}
+
+			if err == nil && tc.errString != "" {
+				t.Fatalf("testing '%v' validateCommand(\"%v\") expected error string: %v, got: nil", name, tc.input, tc.errString)
+			}
+
+			if !reflect.DeepEqual(tc.want, got) {
 				t.Fatalf("testing '%v' validateCommand(\"%v\") expected: %v, got: %v", name, tc.input, tc.want, got)
 			}
 		})

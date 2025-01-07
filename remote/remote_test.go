@@ -67,9 +67,11 @@ func TestGetCleanWpCliArgumentArray(t *testing.T) {
 		input     string
 		want      []string
 	}{
-		"media import file should pass": {errString: "", want: []string{"media", "import", "https://example.com/cutekitties.png"}, input: "media import https://example.com/cutekitties.png"},
-		"json arguments should work":    {errString: "", want: []string{"post", "meta", "update", "1", "custom_option", `'{"name":"Some text with spaces","version":0}'`}, input: `post meta update 1 custom_option '{\"name\":\"Some text with spaces\",\"version\":0}'`},
-		"quoting should work":           {errString: "", want: []string{"vip", "option", "update", "xyz_vipcli_quote", `"cow says \"moo\""`}, input: `vip option update xyz_vipcli_quote "cow says \"moo\""`},
+		"media import file should pass":  {errString: "", want: []string{"media", "import", "https://example.com/cutekitties.png"}, input: "media import https://example.com/cutekitties.png"},
+		"quoting should work":            {errString: "", want: []string{"vip", "option", "update", "xyz_vipcli_quote", `cow says "moo"`}, input: `'vip' "option" update xyz_vipcli_quote "cow says \"moo\""`},
+		"extra quotes should be removed": {errString: "", want: []string{"option"}, input: `"o""p""t"''"i""o""n"`},
+		"slashes should be honored":      {errString: "", want: []string{`"option`, `update"`}, input: `\"option update\"`},
+		"g_shell_unquote example":        {errString: "", want: []string{"fooblah", "blahbarwoo", "foobazla", "la", "la''foo"}, input: `"foo"blah blah'bar'woo foo"baz"la la la\'\''foo'`},
 	}
 
 	for name, tc := range tests {

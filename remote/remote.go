@@ -29,6 +29,7 @@ import (
 	"unicode"
 
 	"github.com/creack/pty"
+	"github.com/google/shlex"
 	"github.com/hashicorp/go-retryablehttp"
 	"github.com/howeyc/fsnotify"
 	"golang.org/x/net/websocket"
@@ -366,45 +367,7 @@ func validateCommand(calledCmd string) (string, error) {
 }
 
 func getCleanWpCliArgumentArray(wpCliCmdString string) ([]string, error) {
-	rawArgs := tokenizeString(wpCliCmdString)
-	cleanArgs := make([]string, 0)
-	openQuote := false
-	arg := ""
-
-	for _, rawArg := range rawArgs {
-		if idx := strings.Index(rawArg, "\""); -1 != idx {
-			if idx != strings.LastIndexAny(rawArg, "\"") {
-				cleanArgs = append(cleanArgs, rawArg)
-			} else if openQuote {
-				arg = fmt.Sprintf("%s %s", arg, rawArg)
-				cleanArgs = append(cleanArgs, arg)
-				arg = ""
-				openQuote = false
-			} else {
-				arg = rawArg
-				openQuote = true
-			}
-		} else {
-			if openQuote {
-				arg = fmt.Sprintf("%s %s", arg, rawArg)
-			} else {
-				cleanArgs = append(cleanArgs, rawArg)
-			}
-		}
-	}
-
-	if openQuote {
-		return make([]string, 0), errors.New(fmt.Sprintf("WP CLI command is invalid: %s\n", wpCliCmdString))
-	}
-
-	// Remove quotes from the args
-	for i := range cleanArgs {
-		if !isJSONObject(cleanArgs[i]) { //don't alter JSON arguments
-			cleanArgs[i] = strings.ReplaceAll(cleanArgs[i], "\"", "")
-		}
-	}
-
-	return cleanArgs, nil
+	return shlex.Split(wpCliCmdString)
 }
 
 func connWriteUTF8(conn net.Conn, data []byte) (int, int, error) {

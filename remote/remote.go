@@ -368,9 +368,13 @@ func getCleanWpCliArgumentArray(wpCliCmdString string) []string {
 	rawArgs := tokenizeString(wpCliCmdString)
 	cleanArgs := make([]string, 0)
 
+	quotedNamedParamRegex := regexp.MustCompile(`^(--[a-zA-Z0-9_-]+=)"(.*)"$`)
+
 	// If the item starts and ends with a single quote, remove the quotes. For compatibility with old VIP CLI.
 	// If the item starts and ends with a double quote, remove the quotes. Additionally, replace any escaped double quotes with a single double quote
-	// Otherwise, use the item as is.
+	// Otherwise:
+	// - if the item is a named parameter with a value that is quoted, remove the quotes around the value.
+	// - if not, use the item as is.
 	for _, rawArg := range rawArgs {
 		if strings.HasPrefix(rawArg, "'") && strings.HasSuffix(rawArg, "'") {
 			cleanArgs = append(cleanArgs, rawArg[1:len(rawArg)-1])
@@ -379,7 +383,11 @@ func getCleanWpCliArgumentArray(wpCliCmdString string) []string {
 			trimmed = strings.ReplaceAll(trimmed, "\\\"", "\"")
 			cleanArgs = append(cleanArgs, trimmed)
 		} else {
-			cleanArgs = append(cleanArgs, rawArg)
+			if matches := quotedNamedParamRegex.FindStringSubmatch(rawArg); matches != nil {
+				cleanArgs = append(cleanArgs, matches[1]+matches[2])
+			} else {
+				cleanArgs = append(cleanArgs, rawArg)
+			}
 		}
 	}
 

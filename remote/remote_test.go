@@ -45,6 +45,9 @@ func TestTokenizeString(t *testing.T) {
 		"nested double quotes": {want: []string{"option", "update", "cow", `"a \"b\""`}, input: `option update cow "a \"b\""`},
 		"one nested quote":     {want: []string{`"a\"b"`}, input: `"a\"b"`},
 
+		// Compatibility with VIP CLI bugs
+		"named parameters": {want: []string{"option", "list", `--search="a b"`}, input: `option list --search="a b"`},
+
 		// These sequences should not occur; if they do, someone is trying to break the system
 		"embedded quotes":       {want: []string{`opt""i''on`}, input: `opt""i''on`},
 		"unbalanced quotes (1)": {want: []string{`"a 'b`}, input: `"a 'b`},
@@ -67,11 +70,14 @@ func TestGetCleanWpCliArgumentArray(t *testing.T) {
 		input string
 		want  []string
 	}{
-		"no quotes":            {want: []string{"option", "update", "cow", "a"}, input: "option update cow a"},
-		"single quotes":        {want: []string{"option", "update", "cow", "a b"}, input: "option update cow 'a b'"},
-		"double quotes":        {want: []string{"option", "update", "cow", "a b"}, input: `option update cow "a b"`},
-		"nested double quotes": {want: []string{"option", "update", "cow", `a "b"`}, input: `option update cow "a \"b\""`},
-		"json":                 {want: []string{"option", "update", "cow", `{"a":"b"}`}, input: `option update cow {"a":"b"}`},
+		"no quotes":                {want: []string{"option", "update", "cow", "a"}, input: "option update cow a"},
+		"single quotes":            {want: []string{"option", "update", "cow", "a b"}, input: "option update cow 'a b'"},
+		"double quotes":            {want: []string{"option", "update", "cow", "a b"}, input: `option update cow "a b"`},
+		"nested double quotes":     {want: []string{"option", "update", "cow", `a "b"`}, input: `option update cow "a \"b\""`},
+		"json":                     {want: []string{"option", "update", "cow", `{"a":"b"}`}, input: `option update cow {"a":"b"}`},
+		"vip-cli bugs":             {want: []string{"option", "list", `--search=a b`}, input: `option list --search="a b"`},
+		"proper quoting":           {want: []string{"option", "list", `--search=a b`}, input: `"option" "list" "--search=a b"`},
+		"proper quoting w/nesting": {want: []string{"option", "list", `--search="a b"`}, input: `"option" "list" "--search=\"a b\""`},
 	}
 
 	for name, tc := range tests {

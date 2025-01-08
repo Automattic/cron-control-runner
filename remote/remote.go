@@ -31,8 +31,8 @@ import (
 	"github.com/creack/pty"
 	"github.com/hashicorp/go-retryablehttp"
 	"github.com/howeyc/fsnotify"
-	"golang.org/x/crypto/ssh/terminal"
 	"golang.org/x/net/websocket"
+	"golang.org/x/term"
 )
 
 const (
@@ -766,14 +766,14 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 	gGUIDttys[GUID] = wpcli
 	padlock.Unlock()
 
-	prevState, err := terminal.MakeRaw(int(tty.Fd()))
+	prevState, err := term.MakeRaw(int(tty.Fd()))
 	if nil != err {
 		conn.Write([]byte("unable to initialize the remote WP CLI process."))
 		conn.Close()
 		logFile.Close()
 		return fmt.Errorf("runWpCliCmdRemote: error initializing the WP CLI process: %s", err.Error())
 	}
-	defer func() { _ = terminal.Restore(int(tty.Fd()), prevState) }()
+	defer func() { _ = term.Restore(int(tty.Fd()), prevState) }()
 
 	readFile, err := os.OpenFile(logFileName, os.O_RDONLY, os.ModeCharDevice)
 	if nil != err {

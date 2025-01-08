@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/hmac"
 	"encoding/json"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -34,7 +34,7 @@ func TestWebhookSender(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			var aux commandCompleted
 
-			body, _ := ioutil.ReadAll(r.Body)
+			body, _ := io.ReadAll(r.Body)
 
 			err := json.Unmarshal([]byte(body), &aux)
 			if err != nil {

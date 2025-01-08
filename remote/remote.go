@@ -29,7 +29,6 @@ import (
 	"unicode"
 
 	"github.com/creack/pty"
-	"github.com/google/shlex"
 	"github.com/hashicorp/go-retryablehttp"
 	"github.com/howeyc/fsnotify"
 	"golang.org/x/net/websocket"
@@ -366,8 +365,26 @@ func validateCommand(calledCmd string) (string, error) {
 	return strings.Join(cmdParts, " "), nil
 }
 
-func getCleanWpCliArgumentArray(wpCliCmdString string) ([]string, error) {
-	return shlex.Split(wpCliCmdString)
+func getCleanWpCliArgumentArray(wpCliCmdString string) []string {
+	rawArgs := tokenizeString(wpCliCmdString)
+	cleanArgs := make([]string, 0)
+
+	// If the item starts and ends with a single quote, remove the quotes. For compatibility with old VIP CLI.
+	// If the item starts and ends with a double quote, remove the quotes. Additionally, replace any escaped double quotes with a single double quote
+	// Otherwise, use the item as is.
+	for _, rawArg := range rawArgs {
+		if strings.HasPrefix(rawArg, "'") && strings.HasSuffix(rawArg, "'") {
+			cleanArgs = append(cleanArgs, rawArg[1:len(rawArg)-1])
+		} else if strings.HasPrefix(rawArg, "\"") && strings.HasSuffix(rawArg, "\"") {
+			trimmed := rawArg[1 : len(rawArg)-1]
+			trimmed = strings.ReplaceAll(trimmed, "\\\"", "\"")
+			cleanArgs = append(cleanArgs, trimmed)
+		} else {
+			cleanArgs = append(cleanArgs, rawArg)
+		}
+	}
+
+	return cleanArgs
 }
 
 func connWriteUTF8(conn net.Conn, data []byte) (int, int, error) {
@@ -677,12 +694,7 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 	cmdArgs := make([]string, 0)
 	cmdArgs = append(cmdArgs, strings.Fields("--path="+remoteConfig.wpPath)...)
 
-	cleanArgs, err := getCleanWpCliArgumentArray(wpCliCmdString)
-	if nil != err {
-		conn.Write([]byte("WP CLI command is invalid"))
-		conn.Close()
-		return errors.New(err.Error())
-	}
+	cleanArgs := getCleanWpCliArgumentArray(wpCliCmdString)
 	log.Printf("LOG CLI Arguments (%d elements): %s", len(cleanArgs), strings.Join(cleanArgs, ", "))
 
 	cmdArgs = append(cmdArgs, cleanArgs...)
@@ -1039,11 +1051,17 @@ Splits a string into an array based on whitespace except when that whitepace is 
 */
 func tokenizeString(rawString string) []string {
 	quoted := false
+	var quoteChar rune
 	var prevRune rune
 	tokenized := strings.FieldsFunc(rawString, func(r rune) bool {
-		//Tokenizing on double quotes EXCEPT when preceded by the escape char
-		if r == '"' && prevRune != '\\' {
-			quoted = !quoted
+		// Tokenizing on double or single quotes EXCEPT when preceded by the escape char
+		if (r == '"' || r == '\'') && prevRune != '\\' {
+			if !quoted {
+				quoted = true
+				quoteChar = r
+			} else if quoteChar == r {
+				quoted = false
+			}
 		}
 		prevRune = r
 		return !quoted && r == ' '

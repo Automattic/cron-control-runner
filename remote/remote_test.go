@@ -39,7 +39,6 @@ func TestValidateCommand(t *testing.T) {
 	}{
 		"media import file should pass": {errString: "", want: "media import https://example.com/cutekitties.png", input: "media import https://example.com/cutekitties.png"},
 		"vip whatever should pass":      {errString: "", want: "vip whatever", input: "vip whatever"},
-		"quoting should work":           {errString: "", want: `vip option update xyz_vipcli_quote "cow says \"moo\""`, input: `vip option update xyz_vipcli_quote "cow says \"moo\""`},
 	}
 
 	for name, tc := range tests {
@@ -61,33 +60,52 @@ func TestValidateCommand(t *testing.T) {
 	}
 }
 
-func TestGetCleanWpCliArgumentArray(t *testing.T) {
+func TestTokenizeString(t *testing.T) {
 	tests := map[string]struct {
-		errString string
-		input     string
-		want      []string
+		input string
+		want  []string
 	}{
-		"media import file should pass":  {errString: "", want: []string{"media", "import", "https://example.com/cutekitties.png"}, input: "media import https://example.com/cutekitties.png"},
-		"quoting should work":            {errString: "", want: []string{"vip", "option", "update", "xyz_vipcli_quote", `cow says "moo"`}, input: `'vip' "option" update xyz_vipcli_quote "cow says \"moo\""`},
-		"extra quotes should be removed": {errString: "", want: []string{"option"}, input: `"o""p""t"''"i""o""n"`},
-		"slashes should be honored":      {errString: "", want: []string{`"option`, `update"`}, input: `\"option update\"`},
-		"g_shell_unquote example":        {errString: "", want: []string{"fooblah", "blahbarwoo", "foobazla", "la", "la''foo"}, input: `"foo"blah blah'bar'woo foo"baz"la la la\'\''foo'`},
+		"no quotes":            {want: []string{"option", "update", "cow", "a"}, input: "option update cow a"},
+		"single quotes":        {want: []string{"option", "update", "cow", `'a b'`}, input: "option update cow 'a b'"},
+		"double quotes":        {want: []string{"option", "update", "cow", `"a b"`}, input: `option update cow "a b"`},
+		"nested double quotes": {want: []string{"option", "update", "cow", `"a \"b\""`}, input: `option update cow "a \"b\""`},
+		"one nested quote":     {want: []string{`"a\"b"`}, input: `"a\"b"`},
+
+		// These sequences should not occur; if they do, someone is trying to break the system
+		"embedded quotes":       {want: []string{`opt""i''on`}, input: `opt""i''on`},
+		"unbalanced quotes (1)": {want: []string{`"a 'b`}, input: `"a 'b`},
+		"unbalanced quotes (2)": {want: []string{`a" 'b`}, input: `a" 'b`},
 	}
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			got, err := getCleanWpCliArgumentArray(tc.input)
-
-			if err != nil && tc.errString != err.Error() {
-				t.Fatalf("testing '%v' validateCommand(\"%v\") expected error: %v, got: %v", name, tc.input, tc.errString, err.Error())
-			}
-
-			if err == nil && tc.errString != "" {
-				t.Fatalf("testing '%v' validateCommand(\"%v\") expected error string: %v, got: nil", name, tc.input, tc.errString)
-			}
+			got := tokenizeString(tc.input)
 
 			if !reflect.DeepEqual(tc.want, got) {
-				t.Fatalf("testing '%v' validateCommand(\"%v\") expected: %v, got: %v", name, tc.input, tc.want, got)
+				t.Fatalf("testing '%v' tokenizeString(\"%v\") expected: %v, got: %v", name, tc.input, tc.want, got)
+			}
+		})
+	}
+}
+
+func TestGetCleanWpCliArgumentArray(t *testing.T) {
+	tests := map[string]struct {
+		input string
+		want  []string
+	}{
+		"no quotes":            {want: []string{"option", "update", "cow", "a"}, input: "option update cow a"},
+		"single quotes":        {want: []string{"option", "update", "cow", "a b"}, input: "option update cow 'a b'"},
+		"double quotes":        {want: []string{"option", "update", "cow", "a b"}, input: `option update cow "a b"`},
+		"nested double quotes": {want: []string{"option", "update", "cow", `a "b"`}, input: `option update cow "a \"b\""`},
+		"json":                 {want: []string{"option", "update", "cow", `{"a":"b"}`}, input: `option update cow {"a":"b"}`},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			got := getCleanWpCliArgumentArray(tc.input)
+
+			if !reflect.DeepEqual(tc.want, got) {
+				t.Fatalf("testing '%v' getCleanWpCliArgumentArray(\"%v\") expected: %v, got: %v", name, tc.input, tc.want, got)
 			}
 		})
 	}

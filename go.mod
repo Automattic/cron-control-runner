@@ -5,10 +5,7 @@ go 1.17
 require (
 	github.com/bradfitz/gomemcache v0.0.0-20190913173617-a41fca850d0b
 	github.com/creack/pty v1.1.18
-	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
-	github.com/hashicorp/go-retryablehttp v0.7.1
 	github.com/howeyc/fsnotify v0.9.0
-	github.com/lthibault/jitterbug/v2 v2.2.2
 	github.com/prometheus/client_golang v1.11.0
 	github.com/yookoala/gofast v0.6.0
 	golang.org/x/crypto v0.0.0-20211108221036-ceb1ce70b4fa
@@ -21,6 +18,8 @@ require (
 	github.com/cespare/xxhash/v2 v2.1.1 // indirect
 	github.com/golang/protobuf v1.4.3 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.1 // indirect
+	github.com/hashicorp/go-retryablehttp v0.7.1 // indirect
+	github.com/lthibault/jitterbug/v2 v2.2.2 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.1 // indirect
 	github.com/prometheus/client_model v0.2.0 // indirect
 	github.com/prometheus/common v0.26.0 // indirect

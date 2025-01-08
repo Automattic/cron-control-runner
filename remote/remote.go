@@ -9,7 +9,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -1069,16 +1068,4 @@ func tokenizeString(rawString string) []string {
 	out := strings.Join(tokenized, ", ")
 	log.Printf("LOG: %s", out)
 	return tokenized
-}
-
-func isJSON(str string) bool {
-	return json.Valid([]byte(str))
-}
-
-func isJSONObject(str string) bool {
-	trimmedStr := strings.TrimSpace(str)
-	if !strings.HasPrefix(trimmedStr, "{") || !strings.HasSuffix(trimmedStr, "}") {
-		return false
-	}
-	return isJSON(str)
 }

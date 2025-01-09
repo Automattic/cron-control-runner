@@ -67,6 +67,10 @@ type config struct {
 	wpPath        string
 }
 
+type lineWriter struct {
+	callback func(line string)
+}
+
 var remoteConfig config
 var wpCliEventSender eventSender
 
@@ -699,9 +703,28 @@ func attachWpCliCmdRemote(conn net.Conn, wpcli *wpCLIProcess, GUID string, rows 
 	return nil
 }
 
+func (lw *lineWriter) Write(p []byte) (n int, err error) {
+	lines := strings.Split(string(p), "\n")
+	for _, line := range lines {
+		if line != "" {
+			lw.callback(line)
+		}
+	}
+	return len(p), nil
+}
+
 func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpCliCmdString string) error {
+	var cmdStdErr bytes.Buffer
+
 	cmdArgs := make([]string, 0)
 	cmdArgs = append(cmdArgs, strings.Fields("--path="+remoteConfig.wpPath)...)
+
+	// Create a custom writer that logs stderr lines
+	stderrLogger := &lineWriter{
+		callback: func(line string) {
+			log.Printf("runWpCliCmdRemote: stderr: %s", line)
+		},
+	}
 
 	cleanArgs, err := getCleanWpCliArgumentArray(wpCliCmdString)
 	if nil != err {
@@ -715,6 +738,7 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 
 	cmd := exec.Command(remoteConfig.wpCLIPath, cmdArgs...)
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color", "LESSSECURE=1")
+	cmd.Stderr = io.MultiWriter(&cmdStdErr, stderrLogger)
 
 	log.Printf("launching %s - rows: %d, cols: %d, args: %s\n", GUID, rows, cols, strings.Join(cmdArgs, " "))
 

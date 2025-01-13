@@ -45,6 +45,11 @@ func TestTokenizeString(t *testing.T) {
 		"nested double quotes": {want: []string{"option", "update", "cow", `"a \"b\""`}, input: `option update cow "a \"b\""`},
 		"one nested quote":     {want: []string{`"a\"b"`}, input: `"a\"b"`},
 
+		// Whitespaces
+		"newline in arguments":  {want: []string{"option", "update", "cow", "\"a\nb\""}, input: "option update cow \"a\nb\""},
+		"newline between args":  {want: []string{"option", "update", "cow", "a"}, input: "option \n update cow a"},
+		"different whitespaces": {want: []string{"option", "update", "cow", "a"}, input: "option \n \t update\v\fcow\ra"},
+
 		// Compatibility with VIP CLI bugs
 		"named parameters": {want: []string{"option", "list", `--search="a b"`}, input: `option list --search="a b"`},
 

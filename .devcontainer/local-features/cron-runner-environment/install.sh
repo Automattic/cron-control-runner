@@ -1,7 +1,7 @@
 #!/bin/sh
 
 apt-get update
-apt-get install -y telnet netcat-openbsd
+apt-get install -y telnet netcat-openbsd uuid-runtime
 rm -rf /var/lib/apt/lists/*
 
 install -D -m 0644 -o root -g root fpm-cron-runner.php /var/wpvip/fpm-cron-runner.php

@@ -1071,7 +1071,7 @@ func tokenizeString(rawString string) []string {
 			}
 		}
 		prevRune = r
-		return !quoted && r == ' '
+		return !quoted && unicode.IsSpace(r)
 	})
 	out := strings.Join(tokenized, ", ")
 	log.Printf("LOG: %s", out)

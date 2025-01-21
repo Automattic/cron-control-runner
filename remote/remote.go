@@ -617,12 +617,12 @@ func attachWpCliCmdRemote(conn net.Conn, wpcli *wpCLIProcess, GUID string, rows 
 		log.Printf("attachWpCliCmdRemote: Catchup_Loop finished ")
 
 		// Used to monitor when the connection is disconnected or the CLI command finishes
-		ticker := time.Tick(time.Duration(500 * time.Millisecond.Nanoseconds()))
+		ticker := time.NewTicker(time.Duration(500 * time.Millisecond.Nanoseconds()))
 
 	Watcher_Loop:
 		for {
 			select {
-			case <-ticker:
+			case <-ticker.C:
 				if !connectionActive {
 					log.Println("attachWpCliCmdRemote: ticker: client connection is closed, exiting this watcher loop")
 					break Watcher_Loop
@@ -788,12 +788,12 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 		var buf []byte = make([]byte, 8192)
 
 		// Used to monitor when the connection is disconnected or the CLI command finishes
-		ticker := time.Tick(time.Duration(500 * time.Millisecond.Nanoseconds()))
+		ticker := time.NewTicker(time.Duration(500 * time.Millisecond.Nanoseconds()))
 
 	Exit_Loop:
 		for {
 			select {
-			case <-ticker:
+			case <-ticker.C:
 				if nil == conn {
 					log.Println("runWpCliCmdRemote ticker: client connection is closed, exiting this watcher loop")
 					break Exit_Loop

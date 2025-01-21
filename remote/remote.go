@@ -32,6 +32,7 @@ import (
 	"github.com/hashicorp/go-retryablehttp"
 	"github.com/howeyc/fsnotify"
 	"golang.org/x/net/websocket"
+	"golang.org/x/sys/unix"
 	"golang.org/x/term"
 )
 
@@ -440,6 +441,16 @@ func processShutdown(conn net.Conn, wpcli *wpCLIProcess) {
 	wpcli.padlock.Unlock()
 }
 
+func setPtyToIgnoreCR(fd int) error {
+	termios, err := unix.IoctlGetTermios(fd, unix.TCGETS)
+	if err == nil {
+		termios.Iflag |= unix.IGNCR
+		return unix.IoctlSetTermios(fd, unix.TCSETS, termios)
+	}
+
+	return err
+}
+
 func processTCPConnectionData(conn net.Conn, wpcli *wpCLIProcess) {
 	data := make([]byte, 8192)
 	var size, written int
@@ -774,6 +785,10 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 		return fmt.Errorf("runWpCliCmdRemote: error initializing the WP CLI process: %s", err.Error())
 	}
 	defer func() { _ = term.Restore(int(tty.Fd()), prevState) }()
+
+	if e := setPtyToIgnoreCR(int(tty.Fd())); e != nil {
+		return fmt.Errorf("runWpCliCmdRemote: error setting the WP CLI TTY to ignore CR: %s", e.Error())
+	}
 
 	readFile, err := os.OpenFile(logFileName, os.O_RDONLY, os.ModeCharDevice)
 	if nil != err {

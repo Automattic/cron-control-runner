@@ -9,7 +9,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -365,46 +364,34 @@ func validateCommand(calledCmd string) (string, error) {
 	return strings.Join(cmdParts, " "), nil
 }
 
-func getCleanWpCliArgumentArray(wpCliCmdString string) ([]string, error) {
+func getCleanWpCliArgumentArray(wpCliCmdString string) []string {
 	rawArgs := tokenizeString(wpCliCmdString)
 	cleanArgs := make([]string, 0)
-	openQuote := false
-	arg := ""
 
+	quotedNamedParamRegex := regexp.MustCompile(`^(--[a-zA-Z0-9_-]+=)"(.*)"$`)
+
+	// If the item starts and ends with a single quote, remove the quotes. For compatibility with old VIP CLI.
+	// If the item starts and ends with a double quote, remove the quotes. Additionally, replace any escaped double quotes with a single double quote
+	// Otherwise:
+	// - if the item is a named parameter with a value that is quoted, remove the quotes around the value.
+	// - if not, use the item as is.
 	for _, rawArg := range rawArgs {
-		if idx := strings.Index(rawArg, "\""); -1 != idx {
-			if idx != strings.LastIndexAny(rawArg, "\"") {
-				cleanArgs = append(cleanArgs, rawArg)
-			} else if openQuote {
-				arg = fmt.Sprintf("%s %s", arg, rawArg)
-				cleanArgs = append(cleanArgs, arg)
-				arg = ""
-				openQuote = false
-			} else {
-				arg = rawArg
-				openQuote = true
-			}
+		if strings.HasPrefix(rawArg, "'") && strings.HasSuffix(rawArg, "'") {
+			cleanArgs = append(cleanArgs, rawArg[1:len(rawArg)-1])
+		} else if strings.HasPrefix(rawArg, "\"") && strings.HasSuffix(rawArg, "\"") {
+			trimmed := rawArg[1 : len(rawArg)-1]
+			trimmed = strings.ReplaceAll(trimmed, "\\\"", "\"")
+			cleanArgs = append(cleanArgs, trimmed)
 		} else {
-			if openQuote {
-				arg = fmt.Sprintf("%s %s", arg, rawArg)
+			if matches := quotedNamedParamRegex.FindStringSubmatch(rawArg); matches != nil {
+				cleanArgs = append(cleanArgs, matches[1]+matches[2])
 			} else {
 				cleanArgs = append(cleanArgs, rawArg)
 			}
 		}
 	}
 
-	if openQuote {
-		return make([]string, 0), errors.New(fmt.Sprintf("WP CLI command is invalid: %s\n", wpCliCmdString))
-	}
-
-	// Remove quotes from the args
-	for i := range cleanArgs {
-		if !isJSONObject(cleanArgs[i]) { //don't alter JSON arguments
-			cleanArgs[i] = strings.ReplaceAll(cleanArgs[i], "\"", "")
-		}
-	}
-
-	return cleanArgs, nil
+	return cleanArgs
 }
 
 func connWriteUTF8(conn net.Conn, data []byte) (int, int, error) {
@@ -714,12 +701,7 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 	cmdArgs := make([]string, 0)
 	cmdArgs = append(cmdArgs, strings.Fields("--path="+remoteConfig.wpPath)...)
 
-	cleanArgs, err := getCleanWpCliArgumentArray(wpCliCmdString)
-	if nil != err {
-		conn.Write([]byte("WP CLI command is invalid"))
-		conn.Close()
-		return errors.New(err.Error())
-	}
+	cleanArgs := getCleanWpCliArgumentArray(wpCliCmdString)
 	log.Printf("LOG CLI Arguments (%d elements): %s", len(cleanArgs), strings.Join(cleanArgs, ", "))
 
 	cmdArgs = append(cmdArgs, cleanArgs...)
@@ -1076,28 +1058,22 @@ Splits a string into an array based on whitespace except when that whitepace is 
 */
 func tokenizeString(rawString string) []string {
 	quoted := false
+	var quoteChar rune
 	var prevRune rune
 	tokenized := strings.FieldsFunc(rawString, func(r rune) bool {
-		//Tokenizing on double quotes EXCEPT when preceded by the escape char
-		if r == '"' && prevRune != '\\' {
-			quoted = !quoted
+		// Tokenizing on double or single quotes EXCEPT when preceded by the escape char
+		if (r == '"' || r == '\'') && prevRune != '\\' {
+			if !quoted {
+				quoted = true
+				quoteChar = r
+			} else if quoteChar == r {
+				quoted = false
+			}
 		}
 		prevRune = r
-		return !quoted && r == ' '
+		return !quoted && unicode.IsSpace(r)
 	})
 	out := strings.Join(tokenized, ", ")
 	log.Printf("LOG: %s", out)
 	return tokenized
-}
-
-func isJSON(str string) bool {
-	return json.Valid([]byte(str))
-}
-
-func isJSONObject(str string) bool {
-	trimmedStr := strings.TrimSpace(str)
-	if !strings.HasPrefix(trimmedStr, "{") || !strings.HasSuffix(trimmedStr, "}") {
-		return false
-	}
-	return isJSON(str)
 }

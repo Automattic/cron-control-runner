@@ -31,7 +31,6 @@ import (
 	"github.com/hashicorp/go-retryablehttp"
 	"github.com/howeyc/fsnotify"
 	"golang.org/x/net/websocket"
-	"golang.org/x/sys/unix"
 	"golang.org/x/term"
 )
 
@@ -39,7 +38,23 @@ const (
 	shutdownErrorCode = 4001 // WebSocket close code when a shutdown signal is detected
 )
 
+type Status int
+
+const (
+	wpCliStatusComplete  Status = 0
+	wpCliStatusErrored          = 1
+	wpCliStatusCanceled         = 2
+	wpCliStatusPreparing        = 3
+	wpCliStatusRunning          = 4
+)
+
 var nonUTF8Replacement = []byte(string(unicode.ReplacementChar))
+
+var invalidStatuses = []Status{
+	wpCliStatusComplete,
+	wpCliStatusCanceled,
+	wpCliStatusErrored,
+}
 
 // Holds info related to a specific remote CLI that is running.
 type wpCLIProcess struct {
@@ -167,6 +182,7 @@ func authConn(conn net.Conn) {
 	var token, GUID, cmd string
 	var read int
 	var err error
+	var status Status = wpCliStatusRunning
 	var data []byte
 	buf := make([]byte, 65535)
 
@@ -218,7 +234,11 @@ func authConn(conn net.Conn) {
 
 	// Determine if the packet structure is the new version or not
 	if ';' != data[len(remoteConfig.remoteToken)] {
-		token, GUID, rows, cols, offset, cmd, err = authenticateProtocolHeader2(data[:size-newlineChars])
+		token, GUID, rows, cols, offset, status, cmd, err = authenticateProtocolHeader3(data[:size-newlineChars])
+
+		if nil != err {
+			token, GUID, rows, cols, offset, cmd, err = authenticateProtocolHeader2(data[:size-newlineChars])
+		}
 	} else {
 		token, GUID, rows, cols, cmd, err = authenticateProtocolHeader1(string(data[:size-newlineChars]))
 	}
@@ -263,7 +283,7 @@ func authConn(conn net.Conn) {
 	}
 
 	// The GUID is not currently running
-	wpCliCmd, err := validateCommand(cmd)
+	wpCliCmd, err := validateCommand(cmd, status)
 	if nil != err {
 		log.Println(err.Error())
 		conn.Write([]byte(err.Error()))
@@ -315,6 +335,49 @@ func authenticateProtocolHeader1(dataString string) (string, string, uint16, uin
 	return token, guid, uint16(rows), uint16(cols), strings.Join(elems[4:], ";"), nil
 }
 
+func authenticateProtocolHeader3(data []byte) (string, string, uint16, uint16, int64, Status, string, error) {
+	var status int
+	var token, guid string
+	var rows, cols uint64
+	var offset uint64
+	var err error
+
+	if len(data) < len(remoteConfig.remoteToken)+gGUIDLength+1+4+4+8+1 {
+		return "", "", 0, 0, 0, 0, "", errors.New("error negotiating the v3 protocol handshake")
+	}
+
+	token = string(data[:len(remoteConfig.remoteToken)])
+	guid = string(data[len(remoteConfig.remoteToken) : len(remoteConfig.remoteToken)+gGUIDLength])
+
+	if !guidRegex.Match([]byte(guid)) {
+		return "", "", 0, 0, 0, 0, "", errors.New("error incorrect GUID format")
+	}
+
+	rows, err = strconv.ParseUint(string(data[len(remoteConfig.remoteToken)+gGUIDLength:len(remoteConfig.remoteToken)+gGUIDLength+4]), 10, 16)
+	if nil != err {
+		return "", "", 0, 0, 0, 0, "", fmt.Errorf("error incorrect console rows setting: %s", err.Error())
+	}
+
+	cols, err = strconv.ParseUint(string(data[len(remoteConfig.remoteToken)+gGUIDLength+4:len(remoteConfig.remoteToken)+gGUIDLength+4+4]), 10, 16)
+	if nil != err {
+		return "", "", 0, 0, 0, 0, "", fmt.Errorf("error incorrect console columns setting: %s", err.Error())
+	}
+
+	offset = binary.LittleEndian.Uint64(data[len(remoteConfig.remoteToken)+gGUIDLength+4+4 : len(remoteConfig.remoteToken)+gGUIDLength+4+4+8])
+
+	status, err = strconv.Atoi(string(data[len(remoteConfig.remoteToken)+gGUIDLength+4+4+8]))
+
+	if nil != err {
+		return "", "", 0, 0, 0, 0, "", fmt.Errorf("error parsing status: %s", err.Error())
+	}
+
+	if status < 0 || status > wpCliStatusRunning {
+		return "", "", 0, 0, 0, 0, "", fmt.Errorf("error incorrect status. Received: %d", status)
+	}
+
+	return token, guid, uint16(rows), uint16(cols), int64(offset), Status(status), string(data[len(remoteConfig.remoteToken)+gGUIDLength+4+4+8+1:]), nil
+}
+
 func authenticateProtocolHeader2(data []byte) (string, string, uint16, uint16, int64, string, error) {
 	var token, guid string
 	var rows, cols uint64
@@ -347,9 +410,14 @@ func authenticateProtocolHeader2(data []byte) (string, string, uint16, uint16, i
 	return token, guid, uint16(rows), uint16(cols), int64(offset), string(data[len(remoteConfig.remoteToken)+gGUIDLength+4+4+8:]), nil
 }
 
-func validateCommand(calledCmd string) (string, error) {
+func validateCommand(calledCmd string, status Status) (string, error) {
 	if 0 == len(strings.TrimSpace(calledCmd)) {
-		return "", errors.New("No WP CLI command specified")
+		return "", errors.New("no WP CLI command specified")
+	}
+	for _, invalidStatus := range invalidStatuses {
+		if status == invalidStatus {
+			return "", fmt.Errorf("invalid command status. Status: %d", status)
+		}
 	}
 
 	cmdParts := strings.Fields(strings.TrimSpace(calledCmd))
@@ -426,16 +494,6 @@ func processShutdown(conn net.Conn, wpcli *wpCLIProcess) {
 	wpcli.Cmd.Process.Kill()
 
 	wpcli.padlock.Unlock()
-}
-
-func setPtyToIgnoreCR(fd int) error {
-	termios, err := unix.IoctlGetTermios(fd, unix.TCGETS)
-	if err == nil {
-		termios.Iflag |= unix.IGNCR
-		return unix.IoctlSetTermios(fd, unix.TCSETS, termios)
-	}
-
-	return err
 }
 
 func processTCPConnectionData(conn net.Conn, wpcli *wpCLIProcess) {
@@ -697,6 +755,57 @@ func attachWpCliCmdRemote(conn net.Conn, wpcli *wpCLIProcess, GUID string, rows 
 	return nil
 }
 
+var longRunningScript = `
+start_time=$(date +%s)
+
+while [ $(($(date +%s) - start_time)) -lt 60 ]; do
+  elapsed_time=$(($(date +%s) - start_time))
+  echo "TIME_ELAPSED: $elapsed_time"
+  sleep 1
+done
+`
+
+var longRunningScriptWithGracefulExit = `
+start_time=$(date +%s)
+trap 'echo "SIGINT received, waiting for 1 seconds before exiting..."; sleep 1; echo "Exiting!" exit' SIGINT
+
+
+while [ $(($(date +%s) - start_time)) -lt 60 ]; do
+  elapsed_time=$(($(date +%s) - start_time))
+  echo "TIME_ELAPSED: $elapsed_time"
+  sleep 1
+done
+
+echo "Waiting for 1 seconds before exiting..."
+sleep 1
+`
+
+func execCommand(conn net.Conn, name string, arg ...string) *exec.Cmd {
+	if os.Getenv("APP_ENV") == "E2E_TEST" {
+		argConcated := strings.Join(arg, " ")
+		switch argConcated {
+		case "TEST_COMMAND":
+			return exec.Command("/bin/bash", "-c", "echo 'TEST_COMMAND'; exit 0")
+		case "TEST_LONG_RUNNING":
+			return exec.Command("/bin/bash", "-c", longRunningScript)
+		case "TEST_LONG_RUNNING_WITH_GRACEFUL_EXIT":
+			return exec.Command("/bin/bash", "-c", longRunningScriptWithGracefulExit)
+		case "TEST_EXIT_CODE_1":
+			return exec.Command("/bin/bash", "-c", "echo 'TEST_EXIT_CODE_1'; exit 1")
+		case "TEST_PREMATURE_EXIT":
+			cmd := exec.Command("/bin/bash", "-c", longRunningScript)
+			time.Sleep(2 * time.Second)
+			cmd.Process.Kill()
+			conn.Close()
+			return cmd
+		}
+	}
+
+	cmd := exec.Command(name, arg...)
+
+	return cmd
+}
+
 func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpCliCmdString string) error {
 	cmdArgs := make([]string, 0)
 	cmdArgs = append(cmdArgs, strings.Fields("--path="+remoteConfig.wpPath)...)
@@ -706,7 +815,7 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 
 	cmdArgs = append(cmdArgs, cleanArgs...)
 
-	cmd := exec.Command(remoteConfig.wpCLIPath, cmdArgs...)
+	cmd := execCommand(conn, remoteConfig.wpCLIPath, cmdArgs...)
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color", "LESSSECURE=1")
 
 	log.Printf("launching %s - rows: %d, cols: %d, args: %s\n", GUID, rows, cols, strings.Join(cmdArgs, " "))

@@ -17,7 +17,7 @@ func TestValidateCommand(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			got, err := validateCommand(tc.input)
+			got, err := validateCommand(tc.input, 0)
 
 			if err != nil && tc.errString != err.Error() {
 				t.Fatalf("testing '%v' validateCommand(\"%v\") expected error: %v, got: %v", name, tc.input, tc.errString, err.Error())

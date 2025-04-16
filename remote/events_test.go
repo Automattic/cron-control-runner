@@ -32,7 +32,7 @@ func getSignatureFromHeader(signature string) []byte {
 func TestWebhookSender(t *testing.T) {
 	t.Run("OK", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			var aux commandCompleted
+			var aux CommandCompleted
 
 			body, _ := io.ReadAll(r.Body)
 
@@ -78,7 +78,7 @@ func TestWebhookSender(t *testing.T) {
 			token,
 		)
 
-		err := wpCliEventSender.send(context.Background(), commandCompleted{
+		err := wpCliEventSender.Send(context.Background(), CommandCompleted{
 			GUID:      "123",
 			EventType: CommandCompletedType,
 			Timestamp: expectedTimestamp,
@@ -97,7 +97,7 @@ func TestWebhookSender(t *testing.T) {
 			token,
 		)
 
-		err := wpCliEventSender.send(context.Background(), commandCompleted{
+		err := wpCliEventSender.Send(context.Background(), CommandCompleted{
 			GUID:      "123",
 			EventType: CommandCompletedType,
 			Timestamp: expectedTimestamp,
@@ -122,7 +122,7 @@ func TestWebhookSender(t *testing.T) {
 			token,
 		)
 
-		err := wpCliEventSender.send(context.Background(), commandCompleted{
+		err := wpCliEventSender.Send(context.Background(), CommandCompleted{
 			GUID:      "123",
 			EventType: CommandCompletedType,
 			Timestamp: expectedTimestamp,
@@ -137,7 +137,7 @@ func TestWebhookSender(t *testing.T) {
 }
 
 func TestSignRequestBody(t *testing.T) {
-	body, err := json.Marshal(commandCompleted{
+	body, err := json.Marshal(CommandCompleted{
 		GUID:      "123",
 		EventType: CommandCompletedType,
 		Timestamp: expectedTimestamp,

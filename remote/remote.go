@@ -68,7 +68,7 @@ type config struct {
 }
 
 var remoteConfig config
-var wpCliEventSender eventSender
+var wpCliEventSender EventSender
 
 // Setup configures the module (not super ideal, but this module needs some reworking to make it better)
 func Setup(remoteToken string, useWebsockets bool, wpCLIPath string, wpPath string, eventsWebhookURL string) {
@@ -85,7 +85,7 @@ func Setup(remoteToken string, useWebsockets bool, wpCLIPath string, wpPath stri
 	)
 }
 
-func setupWebhookSender(remoteToken string, eventsWebhookURL string) eventSender {
+func setupWebhookSender(remoteToken string, eventsWebhookURL string) EventSender {
 	if eventsWebhookURL != "" {
 		retryClient := retryablehttp.NewClient()
 		retryClient.RetryMax = 10
@@ -946,7 +946,7 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 	log.Printf("runWpCliCmdRemote: comand finished: %s\n", GUID)
 
 	go func() {
-		err = wpCliEventSender.send(context.Background(), commandCompleted{
+		err = wpCliEventSender.Send(context.Background(), CommandCompleted{
 			GUID:      GUID,
 			EventType: CommandCompletedType,
 			Timestamp: time.Now().Unix(),

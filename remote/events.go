@@ -15,11 +15,15 @@ import (
 
 const (
 	CommandCompletedType = "command-completed"
+	CommandRunningType   = "command-running"
+	CommandErroredType   = "command-errored"
+	CommandCanceledType  = "command-canceled"
+	CommandHeartbeatType = "command-heartbeat"
 )
 
-type event interface {
-	guid() string
-	eventType() string
+type Event interface {
+	GUIDValue() string
+	EventTypeValue() string
 }
 
 type Clock interface {
@@ -30,7 +34,7 @@ type realClock struct{}
 
 func (realClock) Now() time.Time { return time.Now() }
 
-type commandCompleted struct {
+type CommandCompleted struct {
 	GUID      string `json:"guid"`
 	EventType string `json:"event"`
 	Timestamp int64  `json:"timestamp"`
@@ -38,33 +42,33 @@ type commandCompleted struct {
 	Success   bool   `json:"success"`
 }
 
-func (c commandCompleted) guid() string {
+func (c CommandCompleted) GUIDValue() string {
 	return c.GUID
 }
 
-func (c commandCompleted) eventType() string {
+func (c CommandCompleted) EventTypeValue() string {
 	return c.EventType
 }
 
-type eventSender interface {
-	send(ctx context.Context, e event) error
+type EventSender interface {
+	Send(ctx context.Context, e Event) error
 }
 
-type webhookSender struct {
+type WebhookSender struct {
 	httpClient *http.Client
 	endpoint   string
 	token      string
 }
 
-func NewWebhookSender(client *http.Client, endpoint string, token string) *webhookSender {
-	return &webhookSender{
+func NewWebhookSender(client *http.Client, endpoint string, token string) *WebhookSender {
+	return &WebhookSender{
 		httpClient: client,
 		endpoint:   endpoint,
 		token:      token,
 	}
 }
 
-func (sender *webhookSender) send(ctx context.Context, e event) error {
+func (sender *WebhookSender) Send(ctx context.Context, e Event) error {
 	jsonData, err := json.Marshal(e)
 	if err != nil {
 		return fmt.Errorf("webhookSender failed to marshal event: %w", err)
@@ -99,14 +103,14 @@ func (sender *webhookSender) send(ctx context.Context, e event) error {
 	return fmt.Errorf("webhookSender webhook not accepted. Status Code: %d; Body: %s", response.StatusCode, string(body))
 }
 
-type nopSender struct {
+type NopSender struct {
 }
 
-func NewNopSender() *nopSender {
-	return &nopSender{}
+func NewNopSender() *NopSender {
+	return &NopSender{}
 }
 
-func (sender *nopSender) send(ctx context.Context, e event) error {
+func (sender *NopSender) Send(ctx context.Context, e Event) error {
 	return nil
 }
 

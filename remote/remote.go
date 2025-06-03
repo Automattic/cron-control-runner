@@ -348,20 +348,12 @@ func authenticateProtocolHeader2(data []byte) (string, string, uint16, uint16, i
 }
 
 func validateCommand(calledCmd string) (string, error) {
-	if 0 == len(strings.TrimSpace(calledCmd)) {
-		return "", errors.New("No WP CLI command specified")
+	trimmed := strings.TrimSpace(calledCmd)
+	if len(trimmed) == 0 {
+		return "", errors.New("no WP CLI command specified")
 	}
 
-	cmdParts := strings.Fields(strings.TrimSpace(calledCmd))
-	if 0 == len(cmdParts) {
-		return "", errors.New("WP CLI command not sent")
-	}
-
-	if 1 == len(cmdParts) {
-		return strings.TrimSpace(cmdParts[0]), nil
-	}
-
-	return strings.Join(cmdParts, " "), nil
+	return trimmed, nil
 }
 
 func getCleanWpCliArgumentArray(wpCliCmdString string) []string {

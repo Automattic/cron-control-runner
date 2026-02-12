@@ -698,10 +698,11 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 
 	cmdArgs = append(cmdArgs, cleanArgs...)
 
-	cmd := exec.Command(remoteConfig.wpCLIPath, cmdArgs...)
+	chrootArgs := append([]string{"/chroot", remoteConfig.wpCLIPath}, cmdArgs...)
+	cmd := exec.Command("chroot", chrootArgs...)
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color", "LESSSECURE=1")
 
-	log.Printf("launching %s - rows: %d, cols: %d, args: %s\n", GUID, rows, cols, strings.Join(cmdArgs, " "))
+	log.Printf("launching %s - rows: %d, cols: %d, chroot /chroot %s %s\n", GUID, rows, cols, remoteConfig.wpCLIPath, strings.Join(cmdArgs, " "))
 
 	logFileName := fmt.Sprintf("/tmp/wp-cli-%s", GUID)
 

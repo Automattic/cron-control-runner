@@ -1,6 +1,6 @@
 {
 	"name": "Go",
-	"image": "mcr.microsoft.com/devcontainers/go:1-1.22-bookworm",
+	"image": "mcr.microsoft.com/devcontainers/go:1.25-bookworm",
 	"forwardPorts": [80, 4444],
 	"features": {
 		"ghcr.io/devcontainers/features/github-cli:": {},

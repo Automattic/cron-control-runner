@@ -27,10 +27,10 @@ import (
 	"time"
 	"unicode"
 
+	gorilla "github.com/gorilla/websocket"
 	"github.com/creack/pty"
 	"github.com/hashicorp/go-retryablehttp"
 	"github.com/howeyc/fsnotify"
-	"golang.org/x/net/websocket"
 	"golang.org/x/sys/unix"
 	"golang.org/x/term"
 )
@@ -38,6 +38,59 @@ import (
 const (
 	shutdownErrorCode = 4001 // WebSocket close code when a shutdown signal is detected
 )
+
+// wsNetConn wraps a *gorilla.Conn and implements the net.Conn interface so that
+// the WebSocket connection can be used wherever a plain net.Conn is expected.
+// gorilla/websocket is message-oriented, so Read buffers an entire message and
+// returns chunks of it on successive calls.
+type wsNetConn struct {
+	conn    *gorilla.Conn
+	mu      sync.Mutex // serialises concurrent writes (gorilla requires one writer at a time)
+	readBuf []byte
+}
+
+func newWSNetConn(conn *gorilla.Conn) *wsNetConn {
+	return &wsNetConn{conn: conn}
+}
+
+func (c *wsNetConn) Read(b []byte) (int, error) {
+	for len(c.readBuf) == 0 {
+		_, msg, err := c.conn.ReadMessage()
+		if err != nil {
+			return 0, err
+		}
+		c.readBuf = msg
+	}
+	n := copy(b, c.readBuf)
+	c.readBuf = c.readBuf[n:]
+	return n, nil
+}
+
+func (c *wsNetConn) Write(b []byte) (int, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if err := c.conn.WriteMessage(gorilla.BinaryMessage, b); err != nil {
+		return 0, err
+	}
+	return len(b), nil
+}
+
+func (c *wsNetConn) writeClose(code int) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.conn.WriteControl(
+		gorilla.CloseMessage,
+		gorilla.FormatCloseMessage(code, ""),
+		time.Now().Add(time.Second),
+	)
+}
+
+func (c *wsNetConn) Close() error               { return c.conn.Close() }
+func (c *wsNetConn) LocalAddr() net.Addr         { return c.conn.LocalAddr() }
+func (c *wsNetConn) RemoteAddr() net.Addr        { return c.conn.RemoteAddr() }
+func (c *wsNetConn) SetDeadline(t time.Time) error      { return c.conn.UnderlyingConn().SetDeadline(t) }
+func (c *wsNetConn) SetReadDeadline(t time.Time) error  { return c.conn.SetReadDeadline(t) }
+func (c *wsNetConn) SetWriteDeadline(t time.Time) error { return c.conn.SetWriteDeadline(t) }
 
 var nonUTF8Replacement = []byte(string(unicode.ReplacementChar))
 
@@ -115,6 +168,10 @@ func ListenForConnections() {
 	listenAddr := "0.0.0.0:22122"
 
 	if remoteConfig.useWebsockets {
+		upgrader := &gorilla.Upgrader{
+			// Allow all origins since this is an internal service, not a browser-facing endpoint.
+			CheckOrigin: func(r *http.Request) bool { return true },
+		}
 		s := &http.Server{
 			Addr: listenAddr,
 			ConnContext: func(ctx context.Context, c net.Conn) context.Context {
@@ -125,9 +182,15 @@ func ListenForConnections() {
 				}
 				return ctx
 			},
-			Handler: websocket.Handler(func(wsConn *websocket.Conn) {
-				log.Printf("websocket connection from %s\n", wsConn.RemoteAddr().String())
-				authConn(wsConn)
+			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				wsConn, err := upgrader.Upgrade(w, r, nil)
+				if err != nil {
+					log.Printf("websocket upgrade error: %v\n", err)
+					return
+				}
+				netConn := newWSNetConn(wsConn)
+				log.Printf("websocket connection from %s\n", netConn.RemoteAddr().String())
+				authConn(netConn)
 			}),
 		}
 		log.Printf("Listening for websocket protocol on %q...", listenAddr)
@@ -408,9 +471,9 @@ func processShutdown(conn net.Conn, wpcli *wpCLIProcess) {
 
 	wpcli.padlock.Lock()
 
-	wsConn, ok := conn.(*websocket.Conn)
+	wsConn, ok := conn.(*wsNetConn)
 	if ok {
-		wsConn.WriteClose(shutdownErrorCode)
+		wsConn.writeClose(shutdownErrorCode)
 	}
 
 	conn.Close()

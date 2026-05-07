@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/Automattic/cron-control-runner/logger"
 	"github.com/Automattic/cron-control-runner/metrics"
@@ -183,11 +184,12 @@ func (perf *CLI) runWpCmd(command []string) (string, error) {
 		t0 := time.Now()
 		result, err := perf.processCommandWithFPM(command)
 		perf.metrics.RecordFpmTiming(err == nil, time.Since(t0))
-		return result, err
+		return trimJSONPreamble(result), err
 	}
 
 	// Non-FPM CLI, useful for local dev-env setups.
-	return perf.processCommand(command)
+	result, err := perf.processCommand(command)
+	return trimJSONPreamble(result), err
 }
 
 func (perf *CLI) processCommand(command []string) (string, error) {
@@ -271,6 +273,7 @@ func (perf *CLI) processCommandWithFPM(subcommand []string) (string, error) {
 	if hrw.LastStatus != http.StatusOK {
 		return "", fmt.Errorf("fpm error: lastStatus=%d, headers=%v, stdout=%q, stderr=%q", hrw.LastStatus, hrw.Headers, stdOutStr, stdErr.String())
 	}
+	stdOutStr = trimJSONPreamble(stdOutStr)
 
 	var res struct {
 		Buf    string `json:"buf"`
@@ -300,6 +303,12 @@ func (perf *CLI) processCommandWithFPM(subcommand []string) (string, error) {
 	}
 
 	return res.Buf, err
+}
+
+func trimJSONPreamble(input string) string {
+	return strings.TrimLeftFunc(input, func(r rune) bool {
+		return r == '\uFEFF' || unicode.IsSpace(r)
+	})
 }
 
 func (perf *CLI) buildFpmQuery(subcommand []string) (url.Values, error) {

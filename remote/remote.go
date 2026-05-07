@@ -173,13 +173,6 @@ func ListenForConnections() {
 			},
 			Handler: websocket.Handler(func(wsConn *websocket.Conn) {
 				log.Printf("websocket connection from %s\n", wsConn.RemoteAddr().String())
-				if !tryAcquireHandshakeSlot() {
-					wsConn.Write([]byte("server busy, try again"))
-					wsConn.Close()
-					return
-				}
-				defer releaseHandshakeSlot()
-
 				authConn(wsConn)
 			}),
 		}
@@ -211,16 +204,7 @@ func ListenForConnections() {
 		}
 		log.Printf("connection from %s\n", conn.RemoteAddr().String())
 
-		if !tryAcquireHandshakeSlot() {
-			conn.Write([]byte("server busy, try again"))
-			conn.Close()
-			continue
-		}
-
-		go func(c net.Conn) {
-			defer releaseHandshakeSlot()
-			authConn(c)
-		}(conn)
+		go authConn(conn)
 	}
 }
 
@@ -308,22 +292,21 @@ func readHandshakeData(conn net.Conn, bufReader *bufio.Reader) ([]byte, error) {
 			}
 
 			data = append(data, buf[:read]...)
+			if data[len(data)-1] == '\n' {
+				break
+			}
 		}
 
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				break
+				return nil, errors.New("error handshake terminated before delimiter")
 			}
 
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-				if bufReader.Buffered() == 0 {
-					break
-				}
-			} else {
-				return nil, err
+				return nil, errors.New("error handshake timed out")
 			}
-		} else if read == 0 && bufReader.Buffered() == 0 {
-			break
+
+			return nil, err
 		}
 
 		if err := conn.SetReadDeadline(minTime(handshakeDeadline, time.Now().Add(handshakeIdleTimeout))); err != nil {
@@ -340,6 +323,19 @@ func authConn(conn net.Conn) {
 	var token, GUID, cmd string
 	var err error
 	var data []byte
+	handshakeSlotHeld := false
+
+	if !tryAcquireHandshakeSlot() {
+		conn.Write([]byte("server busy, try again"))
+		conn.Close()
+		return
+	}
+	handshakeSlotHeld = true
+	defer func() {
+		if handshakeSlotHeld {
+			releaseHandshakeSlot()
+		}
+	}()
 
 	log.Println("waiting for auth data")
 
@@ -390,6 +386,8 @@ func authConn(conn net.Conn) {
 		return
 	}
 
+	handshakeSlotHeld = false
+	releaseHandshakeSlot()
 	log.Println("handshake complete!")
 
 	conn.SetReadDeadline(time.Time{})

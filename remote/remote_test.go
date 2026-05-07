@@ -187,6 +187,55 @@ func TestReadHandshakeData(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
+
+	t.Run("rejects handshake timeout without delimiter", func(t *testing.T) {
+		SetupWithOptions("token", false, "/tmp/wp", "/tmp", "", SetupOptions{
+			MaxHandshakeBytes:       1024,
+			HandshakeInitialTimeout: 200 * time.Millisecond,
+			HandshakeIdleTimeout:    20 * time.Millisecond,
+			MaxConcurrentHandshakes: 16,
+		})
+
+		serverConn, clientConn := net.Pipe()
+		defer serverConn.Close()
+		defer clientConn.Close()
+
+		go func() {
+			clientConn.Write([]byte("token-guid"))
+			// Keep the connection open so the server side hits a read timeout.
+			time.Sleep(50 * time.Millisecond)
+		}()
+
+		_, err := readHandshakeData(serverConn, bufio.NewReader(serverConn))
+		if err == nil {
+			t.Fatal("expected timeout error")
+		}
+
+		if !strings.Contains(err.Error(), "timed out") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("rejects handshake terminated without delimiter", func(t *testing.T) {
+		SetupWithOptions("token", false, "/tmp/wp", "/tmp", "", SetupOptions{
+			MaxHandshakeBytes:       1024,
+			HandshakeInitialTimeout: 200 * time.Millisecond,
+			HandshakeIdleTimeout:    50 * time.Millisecond,
+			MaxConcurrentHandshakes: 16,
+		})
+
+		conn := &mockNetConn{}
+		bufReader := bufio.NewReader(bytes.NewReader([]byte("token-guid")))
+
+		_, err := readHandshakeData(conn, bufReader)
+		if err == nil {
+			t.Fatal("expected delimiter error")
+		}
+
+		if !strings.Contains(err.Error(), "before delimiter") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
 }
 
 func TestSetupWithOptions_DefaultsInvalidValues(t *testing.T) {

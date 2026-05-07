@@ -8,7 +8,7 @@ require (
 	github.com/hashicorp/go-retryablehttp v0.7.1
 	github.com/howeyc/fsnotify v0.9.0
 	github.com/lthibault/jitterbug/v2 v2.2.2
-	github.com/prometheus/client_golang v1.11.0
+	github.com/prometheus/client_golang v1.11.1
 	github.com/yookoala/gofast v0.6.0
 	golang.org/x/net v0.38.0
 	golang.org/x/sys v0.31.0

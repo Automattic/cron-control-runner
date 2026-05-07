@@ -2,6 +2,7 @@ package performer
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand"
@@ -141,6 +142,10 @@ func (perf *CLI) getSiteInfo() (siteInfo, error) {
 	jsonRes := make([]siteInfo, 0)
 	if err = json.Unmarshal([]byte(raw), &jsonRes); err != nil {
 		return siteInfo{}, err
+	}
+
+	if len(jsonRes) == 0 {
+		return siteInfo{}, errors.New("getSiteInfo: WP-CLI returned empty response")
 	}
 
 	return jsonRes[0], nil

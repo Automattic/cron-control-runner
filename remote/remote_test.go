@@ -101,6 +101,8 @@ func TestGetCleanWpCliArgumentArray(t *testing.T) {
 }
 
 func TestAuthConnRejectsInvalidToken(t *testing.T) {
+	done := make(chan struct{})
+
 	prevConfig := remoteConfig
 	prevGuidRegex := guidRegex
 	prevGUIDttys := gGUIDttys
@@ -119,11 +121,16 @@ func TestAuthConnRejectsInvalidToken(t *testing.T) {
 
 	serverConn, clientConn := net.Pipe()
 	t.Cleanup(func() {
-		clientConn.Close()
-		serverConn.Close()
+		_ = clientConn.Close()
+		_ = serverConn.Close()
+
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			t.Error("authConn did not terminate during cleanup")
+		}
 	})
 
-	done := make(chan struct{})
 	go func() {
 		defer close(done)
 		authConn(serverConn)

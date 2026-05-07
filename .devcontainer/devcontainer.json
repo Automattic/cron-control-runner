@@ -21,10 +21,14 @@
 				"dlech.chmod",
 				"zhiayang.tabindentspacealign",
 				"GitHub.copilot",
-				"GitHub.copilot-chat",
 				"github.vscode-github-actions",
-				"ms-vsliveshare.vsliveshare"
-			]
+				"ms-vsliveshare.vsliveshare",
+				"adam-bender.commit-message-formatter",
+				"phoihos.git-commit-message-editor"
+			],
+			"settings": {
+				"git.addAICoAuthor": "off"
+			}
 		}
 	}
 }

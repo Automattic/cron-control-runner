@@ -1,9 +1,52 @@
 package remote
 
 import (
+	"bufio"
+	"bytes"
+	"io"
+	"net"
 	"reflect"
+	"strings"
 	"testing"
+	"time"
 )
+
+type mockNetConn struct {
+	deadlines []time.Time
+}
+
+func (m *mockNetConn) Read(_ []byte) (int, error) {
+	return 0, io.EOF
+}
+
+func (m *mockNetConn) Write(b []byte) (int, error) {
+	return len(b), nil
+}
+
+func (m *mockNetConn) Close() error {
+	return nil
+}
+
+func (m *mockNetConn) LocalAddr() net.Addr {
+	return &net.TCPAddr{}
+}
+
+func (m *mockNetConn) RemoteAddr() net.Addr {
+	return &net.TCPAddr{}
+}
+
+func (m *mockNetConn) SetDeadline(_ time.Time) error {
+	return nil
+}
+
+func (m *mockNetConn) SetReadDeadline(t time.Time) error {
+	m.deadlines = append(m.deadlines, t)
+	return nil
+}
+
+func (m *mockNetConn) SetWriteDeadline(_ time.Time) error {
+	return nil
+}
 
 func TestValidateCommand(t *testing.T) {
 	tests := map[string]struct {
@@ -93,5 +136,129 @@ func TestGetCleanWpCliArgumentArray(t *testing.T) {
 				t.Fatalf("testing '%v' getCleanWpCliArgumentArray(\"%v\") expected: %v, got: %v", name, tc.input, tc.want, got)
 			}
 		})
+	}
+}
+
+func TestReadHandshakeData(t *testing.T) {
+	t.Run("returns payload", func(t *testing.T) {
+		SetupWithOptions("token", false, "/tmp/wp", "/tmp", "", SetupOptions{
+			MaxHandshakeBytes:       1024,
+			HandshakeInitialTimeout: 5 * time.Second,
+			HandshakeIdleTimeout:    200 * time.Millisecond,
+			MaxConcurrentHandshakes: 16,
+		})
+
+		conn := &mockNetConn{}
+		payload := []byte("token-guid-rows-cols-cmd\n")
+		bufReader := bufio.NewReader(bytes.NewReader(payload))
+
+		data, err := readHandshakeData(conn, bufReader)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if string(data) != string(payload) {
+			t.Fatalf("unexpected payload: %q", string(data))
+		}
+
+		if len(conn.deadlines) == 0 {
+			t.Fatal("expected read deadline to be set")
+		}
+	})
+
+	t.Run("rejects oversized handshake", func(t *testing.T) {
+		SetupWithOptions("token", false, "/tmp/wp", "/tmp", "", SetupOptions{
+			MaxHandshakeBytes:       16,
+			HandshakeInitialTimeout: 5 * time.Second,
+			HandshakeIdleTimeout:    200 * time.Millisecond,
+			MaxConcurrentHandshakes: 16,
+		})
+
+		conn := &mockNetConn{}
+		payload := bytes.Repeat([]byte("x"), 17)
+		bufReader := bufio.NewReader(bytes.NewReader(payload))
+
+		_, err := readHandshakeData(conn, bufReader)
+		if err == nil {
+			t.Fatal("expected oversized handshake error")
+		}
+
+		if !strings.Contains(err.Error(), "exceeds maximum size of 16 bytes") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("rejects handshake timeout without delimiter", func(t *testing.T) {
+		SetupWithOptions("token", false, "/tmp/wp", "/tmp", "", SetupOptions{
+			MaxHandshakeBytes:       1024,
+			HandshakeInitialTimeout: 200 * time.Millisecond,
+			HandshakeIdleTimeout:    20 * time.Millisecond,
+			MaxConcurrentHandshakes: 16,
+		})
+
+		serverConn, clientConn := net.Pipe()
+		defer serverConn.Close()
+		defer clientConn.Close()
+
+		go func() {
+			clientConn.Write([]byte("token-guid"))
+			// Keep the connection open so the server side hits a read timeout.
+			time.Sleep(50 * time.Millisecond)
+		}()
+
+		_, err := readHandshakeData(serverConn, bufio.NewReader(serverConn))
+		if err == nil {
+			t.Fatal("expected timeout error")
+		}
+
+		if !strings.Contains(err.Error(), "timed out") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("rejects handshake terminated without delimiter", func(t *testing.T) {
+		SetupWithOptions("token", false, "/tmp/wp", "/tmp", "", SetupOptions{
+			MaxHandshakeBytes:       1024,
+			HandshakeInitialTimeout: 200 * time.Millisecond,
+			HandshakeIdleTimeout:    50 * time.Millisecond,
+			MaxConcurrentHandshakes: 16,
+		})
+
+		conn := &mockNetConn{}
+		bufReader := bufio.NewReader(bytes.NewReader([]byte("token-guid")))
+
+		_, err := readHandshakeData(conn, bufReader)
+		if err == nil {
+			t.Fatal("expected delimiter error")
+		}
+
+		if !strings.Contains(err.Error(), "before delimiter") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+}
+
+func TestSetupWithOptions_DefaultsInvalidValues(t *testing.T) {
+	SetupWithOptions("token", false, "/tmp/wp", "/tmp", "", SetupOptions{
+		MaxHandshakeBytes:       -1,
+		HandshakeInitialTimeout: -1,
+		HandshakeIdleTimeout:    -1,
+		MaxConcurrentHandshakes: -1,
+	})
+
+	if got, want := remoteConfig.maxHandshakeBytes, defaultMaxHandshakeBytes; got != want {
+		t.Fatalf("maxHandshakeBytes=%d, want %d", got, want)
+	}
+
+	if got, want := remoteConfig.handshakeInitialTimeout, defaultHandshakeInitialTimeout; got != want {
+		t.Fatalf("handshakeInitialTimeout=%s, want %s", got, want)
+	}
+
+	if got, want := remoteConfig.handshakeIdleTimeout, defaultHandshakeIdleTimeout; got != want {
+		t.Fatalf("handshakeIdleTimeout=%s, want %s", got, want)
+	}
+
+	if got, want := remoteConfig.maxConcurrentHandshakes, defaultMaxConcurrentHandshakes; got != want {
+		t.Fatalf("maxConcurrentHandshakes=%d, want %d", got, want)
 	}
 }

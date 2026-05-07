@@ -29,6 +29,10 @@ type options struct {
 	remoteToken           string
 	useWebsockets         bool
 	eventsWebhookURL      string
+	maxHandshakeBytes     int
+	handshakeInitialTTL   time.Duration
+	handshakeIdleTTL      time.Duration
+	maxHandshakeSessions  int
 	useLocker             bool
 	dataConfigPath        string
 	lockerRefreshInterval time.Duration
@@ -78,7 +82,19 @@ func main() {
 	// Setup the remote CLI module if enabled.
 	if 0 < len(options.remoteToken) {
 		// TODO: This module could definitely use some general refactoring, but namely a graceful shutdown would be good.
-		remote.Setup(options.remoteToken, options.useWebsockets, options.wpCLIPath, options.wpPath, options.eventsWebhookURL)
+		remote.SetupWithOptions(
+			options.remoteToken,
+			options.useWebsockets,
+			options.wpCLIPath,
+			options.wpPath,
+			options.eventsWebhookURL,
+			remote.SetupOptions{
+				MaxHandshakeBytes:       options.maxHandshakeBytes,
+				HandshakeInitialTimeout: options.handshakeInitialTTL,
+				HandshakeIdleTimeout:    options.handshakeIdleTTL,
+				MaxConcurrentHandshakes: options.maxHandshakeSessions,
+			},
+		)
 		go remote.ListenForConnections()
 	}
 
@@ -107,6 +123,10 @@ func getCliOptions() options {
 		},
 		remoteToken:           "",
 		useWebsockets:         false,
+		maxHandshakeBytes:     64 * 1024,
+		handshakeInitialTTL:   15 * time.Second,
+		handshakeIdleTTL:      200 * time.Millisecond,
+		maxHandshakeSessions:  256,
 		useLocker:             false,
 		dataConfigPath:        "/etc/wpvip-data-config/config.json",
 		lockerRefreshInterval: 10 * time.Second,
@@ -138,6 +158,10 @@ func getCliOptions() options {
 	flag.StringVar(&(options.remoteToken), "token", options.remoteToken, "Token to authenticate remote WP CLI requests")
 	flag.BoolVar(&(options.useWebsockets), "use-websockets", options.useWebsockets, "Use the websocket listener instead of raw tcp for remote WP CLI requests")
 	flag.StringVar(&(options.eventsWebhookURL), "events-webhook-url", options.eventsWebhookURL, "Webhook URL used to send WP CLI events")
+	flag.IntVar(&(options.maxHandshakeBytes), "max-handshake-bytes", options.maxHandshakeBytes, "Maximum number of bytes accepted during remote handshake")
+	flag.DurationVar(&(options.handshakeInitialTTL), "handshake-initial-timeout", options.handshakeInitialTTL, "Absolute timeout for finishing remote handshake")
+	flag.DurationVar(&(options.handshakeIdleTTL), "handshake-idle-timeout", options.handshakeIdleTTL, "Idle timeout between handshake packets")
+	flag.IntVar(&(options.maxHandshakeSessions), "max-concurrent-handshakes", options.maxHandshakeSessions, "Maximum number of concurrent in-progress remote handshakes")
 
 	// NOTE: this will exit if options are invalid or if help is requested, etc.
 	flag.Parse()

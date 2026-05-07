@@ -101,7 +101,7 @@ func TestGetCleanWpCliArgumentArray(t *testing.T) {
 }
 
 func TestAuthConnRejectsInvalidToken(t *testing.T) {
-	remoteConfig = config{remoteToken: "supersecrettoken"}
+	remoteConfig = config{remoteToken: "supersecrettoken", remoteTokenB: []byte("supersecrettoken")}
 	guidRegex = regexp.MustCompile(`^[a-fA-F0-9\-]+$`)
 	gGUIDttys = make(map[string]*wpCLIProcess)
 	padlock = &sync.Mutex{}

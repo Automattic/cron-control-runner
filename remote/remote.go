@@ -63,6 +63,7 @@ var (
 
 type config struct {
 	remoteToken   string
+	remoteTokenB  []byte
 	useWebsockets bool
 	wpCLIPath     string
 	wpPath        string
@@ -75,6 +76,7 @@ var wpCliEventSender EventSender
 func Setup(remoteToken string, useWebsockets bool, wpCLIPath string, wpPath string, eventsWebhookURL string) {
 	remoteConfig = config{
 		remoteToken:   remoteToken,
+		remoteTokenB:  []byte(remoteToken),
 		useWebsockets: useWebsockets,
 		wpCLIPath:     wpCLIPath,
 		wpPath:        wpPath,
@@ -232,7 +234,7 @@ func authConn(conn net.Conn) {
 		return
 	}
 
-	if subtle.ConstantTimeCompare([]byte(token), []byte(remoteConfig.remoteToken)) != 1 {
+	if subtle.ConstantTimeCompare([]byte(token), remoteConfig.remoteTokenB) != 1 {
 		conn.Write([]byte("invalid auth handshake"))
 		log.Printf("error incorrect handshake string")
 		conn.Close()

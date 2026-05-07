@@ -101,7 +101,18 @@ func TestGetCleanWpCliArgumentArray(t *testing.T) {
 }
 
 func TestAuthConnRejectsInvalidToken(t *testing.T) {
-	remoteConfig = config{remoteToken: "supersecrettoken", remoteTokenB: []byte("supersecrettoken")}
+	prevConfig := remoteConfig
+	prevGuidRegex := guidRegex
+	prevGUIDttys := gGUIDttys
+	prevPadlock := padlock
+	t.Cleanup(func() {
+		remoteConfig = prevConfig
+		guidRegex = prevGuidRegex
+		gGUIDttys = prevGUIDttys
+		padlock = prevPadlock
+	})
+
+	remoteConfig = config{remoteTokenB: []byte("supersecrettoken")}
 	guidRegex = regexp.MustCompile(`^[a-fA-F0-9\-]+$`)
 	gGUIDttys = make(map[string]*wpCLIProcess)
 	padlock = &sync.Mutex{}
@@ -124,7 +135,9 @@ func TestAuthConnRejectsInvalidToken(t *testing.T) {
 	}
 
 	buf := make([]byte, 256)
-	_ = clientConn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	if err := clientConn.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		t.Fatalf("failed to set read deadline: %v", err)
+	}
 	n, err := clientConn.Read(buf)
 	if err != nil {
 		t.Fatalf("failed to read auth response: %v", err)

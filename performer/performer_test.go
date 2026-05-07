@@ -39,3 +39,41 @@ func TestEvent_LockKey(t *testing.T) {
 		})
 	}
 }
+
+func TestSanitizeJSONInput(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "plain json unchanged",
+			input: `[{"url":"https://example.com"}]`,
+			want:  `[{"url":"https://example.com"}]`,
+		},
+		{
+			name:  "strips bom",
+			input: "\uFEFF[{\"url\":\"https://example.com\"}]",
+			want:  `[{"url":"https://example.com"}]`,
+		},
+		{
+			name:  "strips leading whitespace",
+			input: " \n\t[{\"url\":\"https://example.com\"}]",
+			want:  `[{"url":"https://example.com"}]`,
+		},
+		{
+			name:  "strips whitespace then bom",
+			input: " \n\t\uFEFF[{\"url\":\"https://example.com\"}]",
+			want:  `[{"url":"https://example.com"}]`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := sanitizeJSONInput(tt.input)
+			if got != tt.want {
+				t.Fatalf("sanitizeJSONInput() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

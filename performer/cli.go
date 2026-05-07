@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/Automattic/cron-control-runner/logger"
 	"github.com/Automattic/cron-control-runner/metrics"
@@ -115,6 +116,7 @@ func (perf *CLI) getMultisiteSites() (Sites, error) {
 	if err != nil {
 		return sites, err
 	}
+	raw = sanitizeJSONInput(raw)
 
 	jsonRes := make([]Site, 0)
 	if err = json.Unmarshal([]byte(raw), &jsonRes); err != nil {
@@ -136,6 +138,7 @@ func (perf *CLI) getSiteInfo() (siteInfo, error) {
 	if err != nil {
 		return siteInfo{}, err
 	}
+	raw = sanitizeJSONInput(raw)
 
 	jsonRes := make([]siteInfo, 0)
 	if err = json.Unmarshal([]byte(raw), &jsonRes); err != nil {
@@ -153,6 +156,7 @@ func (perf *CLI) GetEvents(site Site) ([]Event, error) {
 	if err != nil {
 		return emptyEvents, err
 	}
+	raw = sanitizeJSONInput(raw)
 
 	siteEvents := make([]Event, 0)
 	if err = json.Unmarshal([]byte(raw), &siteEvents); err != nil {
@@ -271,6 +275,7 @@ func (perf *CLI) processCommandWithFPM(subcommand []string) (string, error) {
 	if hrw.LastStatus != http.StatusOK {
 		return "", fmt.Errorf("fpm error: lastStatus=%d, headers=%v, stdout=%q, stderr=%q", hrw.LastStatus, hrw.Headers, stdOutStr, stdErr.String())
 	}
+	stdOutStr = sanitizeJSONInput(stdOutStr)
 
 	var res struct {
 		Buf    string `json:"buf"`
@@ -300,6 +305,15 @@ func (perf *CLI) processCommandWithFPM(subcommand []string) (string, error) {
 	}
 
 	return res.Buf, err
+}
+
+func sanitizeJSONInput(input string) string {
+	// Some upstream environments occasionally prepend a UTF-8 BOM and/or whitespace.
+	// Strip both so JSON decoding starts at the first JSON token.
+	input = strings.TrimLeftFunc(input, unicode.IsSpace)
+	input = strings.TrimPrefix(input, "\uFEFF")
+	input = strings.TrimLeftFunc(input, unicode.IsSpace)
+	return input
 }
 
 func (perf *CLI) buildFpmQuery(subcommand []string) (url.Values, error) {

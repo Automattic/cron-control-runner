@@ -184,12 +184,12 @@ func (perf *CLI) runWpCmd(command []string) (string, error) {
 		t0 := time.Now()
 		result, err := perf.processCommandWithFPM(command)
 		perf.metrics.RecordFpmTiming(err == nil, time.Since(t0))
-		return sanitizeJSONInput(result), err
+		return trimJSONPreamble(result), err
 	}
 
 	// Non-FPM CLI, useful for local dev-env setups.
 	result, err := perf.processCommand(command)
-	return sanitizeJSONInput(result), err
+	return trimJSONPreamble(result), err
 }
 
 func (perf *CLI) processCommand(command []string) (string, error) {
@@ -273,7 +273,7 @@ func (perf *CLI) processCommandWithFPM(subcommand []string) (string, error) {
 	if hrw.LastStatus != http.StatusOK {
 		return "", fmt.Errorf("fpm error: lastStatus=%d, headers=%v, stdout=%q, stderr=%q", hrw.LastStatus, hrw.Headers, stdOutStr, stdErr.String())
 	}
-	stdOutStr = sanitizeJSONInput(stdOutStr)
+	stdOutStr = trimJSONPreamble(stdOutStr)
 
 	var res struct {
 		Buf    string `json:"buf"`
@@ -305,13 +305,10 @@ func (perf *CLI) processCommandWithFPM(subcommand []string) (string, error) {
 	return res.Buf, err
 }
 
-func sanitizeJSONInput(input string) string {
-	// Some upstream environments occasionally prepend a UTF-8 BOM and/or whitespace.
-	// Strip both so JSON decoding starts at the first JSON token.
-	input = strings.TrimLeftFunc(input, unicode.IsSpace)
-	input = strings.TrimPrefix(input, "\uFEFF")
-	input = strings.TrimLeftFunc(input, unicode.IsSpace)
-	return input
+func trimJSONPreamble(input string) string {
+	return strings.TrimLeftFunc(input, func(r rune) bool {
+		return r == '\uFEFF' || unicode.IsSpace(r)
+	})
 }
 
 func (perf *CLI) buildFpmQuery(subcommand []string) (url.Values, error) {

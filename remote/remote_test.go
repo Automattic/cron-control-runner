@@ -1,8 +1,12 @@
 package remote
 
 import (
+	"net"
 	"reflect"
+	"regexp"
+	"sync"
 	"testing"
+	"time"
 )
 
 func TestValidateCommand(t *testing.T) {
@@ -93,5 +97,46 @@ func TestGetCleanWpCliArgumentArray(t *testing.T) {
 				t.Fatalf("testing '%v' getCleanWpCliArgumentArray(\"%v\") expected: %v, got: %v", name, tc.input, tc.want, got)
 			}
 		})
+	}
+}
+
+func TestAuthConnRejectsInvalidToken(t *testing.T) {
+	remoteConfig = config{remoteToken: "supersecrettoken"}
+	guidRegex = regexp.MustCompile(`^[a-fA-F0-9\-]+$`)
+	gGUIDttys = make(map[string]*wpCLIProcess)
+	padlock = &sync.Mutex{}
+
+	serverConn, clientConn := net.Pipe()
+	t.Cleanup(func() {
+		clientConn.Close()
+		serverConn.Close()
+	})
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		authConn(serverConn)
+	}()
+
+	handshake := "xupersecrettoken;123e4567-e89b-12d3-a456-426614174000;24;80;vip whatever\n"
+	if _, err := clientConn.Write([]byte(handshake)); err != nil {
+		t.Fatalf("failed to write handshake: %v", err)
+	}
+
+	buf := make([]byte, 256)
+	_ = clientConn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	n, err := clientConn.Read(buf)
+	if err != nil {
+		t.Fatalf("failed to read auth response: %v", err)
+	}
+
+	if got := string(buf[:n]); got != "invalid auth handshake" {
+		t.Fatalf("expected invalid auth handshake, got %q", got)
+	}
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("authConn did not terminate")
 	}
 }

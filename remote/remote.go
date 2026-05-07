@@ -8,6 +8,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/subtle"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -231,7 +232,7 @@ func authConn(conn net.Conn) {
 		return
 	}
 
-	if token != remoteConfig.remoteToken {
+	if subtle.ConstantTimeCompare([]byte(token), []byte(remoteConfig.remoteToken)) != 1 {
 		conn.Write([]byte("invalid auth handshake"))
 		log.Printf("error incorrect handshake string")
 		conn.Close()

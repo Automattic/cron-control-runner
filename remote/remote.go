@@ -173,6 +173,13 @@ func authConn(conn net.Conn) {
 
 	log.Println("waiting for auth data")
 
+	if len(remoteConfig.remoteTokenB) == 0 {
+		conn.Write([]byte("invalid auth handshake"))
+		log.Printf("error remote token is not configured")
+		conn.Close()
+		return
+	}
+
 	conn.SetReadDeadline(time.Now().Add(time.Duration(5000 * time.Millisecond.Nanoseconds())))
 	bufReader := bufio.NewReader(conn)
 

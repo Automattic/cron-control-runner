@@ -37,6 +37,11 @@ import (
 
 const (
 	shutdownErrorCode = 4001 // WebSocket close code when a shutdown signal is detected
+
+	defaultMaxHandshakeBytes       = 64 * 1024
+	defaultHandshakeInitialTimeout = 15 * time.Second
+	defaultHandshakeIdleTimeout    = 200 * time.Millisecond
+	defaultMaxConcurrentHandshakes = 256
 )
 
 var nonUTF8Replacement = []byte(string(unicode.ReplacementChar))
@@ -54,17 +59,29 @@ type wpCLIProcess struct {
 }
 
 var (
-	gGUIDLength = 36
-	gGUIDttys   map[string]*wpCLIProcess
-	padlock     *sync.Mutex
-	guidRegex   *regexp.Regexp
+	gGUIDLength  = 36
+	gGUIDttys    map[string]*wpCLIProcess
+	padlock      *sync.Mutex
+	guidRegex    *regexp.Regexp
+	handshakeSem chan struct{}
 )
 
 type config struct {
-	remoteToken   string
-	useWebsockets bool
-	wpCLIPath     string
-	wpPath        string
+	remoteToken             string
+	useWebsockets           bool
+	wpCLIPath               string
+	wpPath                  string
+	maxHandshakeBytes       int
+	handshakeInitialTimeout time.Duration
+	handshakeIdleTimeout    time.Duration
+	maxConcurrentHandshakes int
+}
+
+type SetupOptions struct {
+	MaxHandshakeBytes       int
+	HandshakeInitialTimeout time.Duration
+	HandshakeIdleTimeout    time.Duration
+	MaxConcurrentHandshakes int
 }
 
 var remoteConfig config
@@ -72,11 +89,39 @@ var wpCliEventSender EventSender
 
 // Setup configures the module (not super ideal, but this module needs some reworking to make it better)
 func Setup(remoteToken string, useWebsockets bool, wpCLIPath string, wpPath string, eventsWebhookURL string) {
+	SetupWithOptions(remoteToken, useWebsockets, wpCLIPath, wpPath, eventsWebhookURL, SetupOptions{})
+}
+
+func SetupWithOptions(remoteToken string, useWebsockets bool, wpCLIPath string, wpPath string, eventsWebhookURL string, options SetupOptions) {
+	maxHandshakeBytes := options.MaxHandshakeBytes
+	if maxHandshakeBytes <= 0 {
+		maxHandshakeBytes = defaultMaxHandshakeBytes
+	}
+
+	handshakeInitialTimeout := options.HandshakeInitialTimeout
+	if handshakeInitialTimeout <= 0 {
+		handshakeInitialTimeout = defaultHandshakeInitialTimeout
+	}
+
+	handshakeIdleTimeout := options.HandshakeIdleTimeout
+	if handshakeIdleTimeout <= 0 {
+		handshakeIdleTimeout = defaultHandshakeIdleTimeout
+	}
+
+	maxConcurrentHandshakes := options.MaxConcurrentHandshakes
+	if maxConcurrentHandshakes <= 0 {
+		maxConcurrentHandshakes = defaultMaxConcurrentHandshakes
+	}
+
 	remoteConfig = config{
-		remoteToken:   remoteToken,
-		useWebsockets: useWebsockets,
-		wpCLIPath:     wpCLIPath,
-		wpPath:        wpPath,
+		remoteToken:             remoteToken,
+		useWebsockets:           useWebsockets,
+		wpCLIPath:               wpCLIPath,
+		wpPath:                  wpPath,
+		maxHandshakeBytes:       maxHandshakeBytes,
+		handshakeInitialTimeout: handshakeInitialTimeout,
+		handshakeIdleTimeout:    handshakeIdleTimeout,
+		maxConcurrentHandshakes: maxConcurrentHandshakes,
 	}
 
 	wpCliEventSender = setupWebhookSender(
@@ -105,6 +150,7 @@ func setupWebhookSender(remoteToken string, eventsWebhookURL string) EventSender
 func ListenForConnections() {
 	gGUIDttys = make(map[string]*wpCLIProcess)
 	padlock = &sync.Mutex{}
+	handshakeSem = make(chan struct{}, effectiveMaxConcurrentHandshakes())
 
 	guidRegex = regexp.MustCompile("^[a-fA-F0-9\\-]+$")
 	if nil == guidRegex {
@@ -127,6 +173,13 @@ func ListenForConnections() {
 			},
 			Handler: websocket.Handler(func(wsConn *websocket.Conn) {
 				log.Printf("websocket connection from %s\n", wsConn.RemoteAddr().String())
+				if !tryAcquireHandshakeSlot() {
+					wsConn.Write([]byte("server busy, try again"))
+					wsConn.Close()
+					return
+				}
+				defer releaseHandshakeSlot()
+
 				authConn(wsConn)
 			}),
 		}
@@ -152,53 +205,152 @@ func ListenForConnections() {
 	for {
 		log.Println("listening...")
 		conn, err := listener.AcceptTCP()
-		log.Printf("connection from %s\n", conn.RemoteAddr().String())
 		if err != nil {
 			log.Printf("error accepting connection: %s\n", err.Error())
 			continue
 		}
-		go authConn(conn)
+		log.Printf("connection from %s\n", conn.RemoteAddr().String())
+
+		if !tryAcquireHandshakeSlot() {
+			conn.Write([]byte("server busy, try again"))
+			conn.Close()
+			continue
+		}
+
+		go func(c net.Conn) {
+			defer releaseHandshakeSlot()
+			authConn(c)
+		}(conn)
 	}
+}
+
+func tryAcquireHandshakeSlot() bool {
+	if handshakeSem == nil {
+		return true
+	}
+
+	select {
+	case handshakeSem <- struct{}{}:
+		return true
+	default:
+		return false
+	}
+}
+
+func releaseHandshakeSlot() {
+	if handshakeSem == nil {
+		return
+	}
+
+	select {
+	case <-handshakeSem:
+	default:
+	}
+}
+
+func minTime(a, b time.Time) time.Time {
+	if a.Before(b) {
+		return a
+	}
+
+	return b
+}
+
+func effectiveMaxHandshakeBytes() int {
+	if remoteConfig.maxHandshakeBytes <= 0 {
+		return defaultMaxHandshakeBytes
+	}
+
+	return remoteConfig.maxHandshakeBytes
+}
+
+func effectiveHandshakeInitialTimeout() time.Duration {
+	if remoteConfig.handshakeInitialTimeout <= 0 {
+		return defaultHandshakeInitialTimeout
+	}
+
+	return remoteConfig.handshakeInitialTimeout
+}
+
+func effectiveHandshakeIdleTimeout() time.Duration {
+	if remoteConfig.handshakeIdleTimeout <= 0 {
+		return defaultHandshakeIdleTimeout
+	}
+
+	return remoteConfig.handshakeIdleTimeout
+}
+
+func effectiveMaxConcurrentHandshakes() int {
+	if remoteConfig.maxConcurrentHandshakes <= 0 {
+		return defaultMaxConcurrentHandshakes
+	}
+
+	return remoteConfig.maxConcurrentHandshakes
+}
+
+func readHandshakeData(conn net.Conn, bufReader *bufio.Reader) ([]byte, error) {
+	data := make([]byte, 0, 1024)
+	buf := make([]byte, 4096)
+	handshakeDeadline := time.Now().Add(effectiveHandshakeInitialTimeout())
+	handshakeIdleTimeout := effectiveHandshakeIdleTimeout()
+	maxHandshakeBytes := effectiveMaxHandshakeBytes()
+
+	if err := conn.SetReadDeadline(minTime(handshakeDeadline, time.Now().Add(handshakeIdleTimeout))); err != nil {
+		return nil, err
+	}
+
+	for {
+		read, err := bufReader.Read(buf)
+
+		if read > 0 {
+			if len(data)+read > maxHandshakeBytes {
+				return nil, fmt.Errorf("error handshake exceeds maximum size of %d bytes", maxHandshakeBytes)
+			}
+
+			data = append(data, buf[:read]...)
+		}
+
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+
+			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+				if bufReader.Buffered() == 0 {
+					break
+				}
+			} else {
+				return nil, err
+			}
+		} else if read == 0 && bufReader.Buffered() == 0 {
+			break
+		}
+
+		if err := conn.SetReadDeadline(minTime(handshakeDeadline, time.Now().Add(handshakeIdleTimeout))); err != nil {
+			return nil, err
+		}
+	}
+
+	return data, nil
 }
 
 func authConn(conn net.Conn) {
 	var rows, cols uint16
 	var offset int64
 	var token, GUID, cmd string
-	var read int
 	var err error
 	var data []byte
-	buf := make([]byte, 65535)
 
 	log.Println("waiting for auth data")
 
-	conn.SetReadDeadline(time.Now().Add(time.Duration(5000 * time.Millisecond.Nanoseconds())))
 	bufReader := bufio.NewReader(conn)
-
-	for {
-		read, err = bufReader.Read(buf)
-
-		if nil != err && !strings.Contains(err.Error(), "i/o timeout") {
-			conn.Write([]byte("error during handshaking\n"))
-			log.Printf("error handshaking: %s\n", err.Error())
-			conn.Close()
-			return
-		}
-
-		if 0 != read {
-			if nil == data {
-				data = make([]byte, read)
-				copy(data, buf[:read])
-			} else {
-				data = append(data, buf[:read]...)
-			}
-		} else if 0 == bufReader.Buffered() {
-			break
-		}
-
-		conn.SetReadDeadline(time.Now().Add(time.Duration(200 * time.Millisecond.Nanoseconds())))
+	data, err = readHandshakeData(conn, bufReader)
+	if nil != err {
+		conn.Write([]byte("error during handshaking\n"))
+		log.Printf("error handshaking: %s\n", err.Error())
+		conn.Close()
+		return
 	}
-	buf = nil
 
 	size := len(data)
 	log.Printf("size of handshake %d\n", size)

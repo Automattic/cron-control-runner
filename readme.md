@@ -59,6 +59,30 @@ It's helpful to specify some environment variables (e.g. in an `.env` file):
 - `-use-mock-data`
 	- use the mock performer for testing
 
+## Remote WP CLI Options
+- `-token` string
+	- Token to authenticate remote WP CLI requests.
+- `-use-websockets`
+	- Use the websocket listener instead of raw tcp for remote WP CLI requests.
+- `-events-webhook-url` string
+	- Webhook URL used to send WP CLI events.
+- `-max-handshake-bytes` int
+	- Maximum number of bytes accepted during remote handshake (default 65536).
+- `-handshake-initial-timeout` duration
+	- Absolute timeout to finish the handshake, regardless of trickle traffic (default 15s).
+- `-handshake-idle-timeout` duration
+	- Maximum idle time between handshake packets (default 200ms).
+- `-max-concurrent-handshakes` int
+	- Maximum number of concurrent in-progress handshakes (default 256).
+
+### Recommended Production Baseline
+- Keep `-max-handshake-bytes` at `65536` unless clients require larger metadata.
+- Keep `-handshake-initial-timeout` at `15s`; increase only if legitimate clients regularly exceed it.
+- Keep `-handshake-idle-timeout` at `200ms`; this blocks slow-loris style packet trickling.
+- Set `-max-concurrent-handshakes` to match host capacity and expected peak auth bursts.
+	- If memory pressure is observed during spikes, lower this value.
+	- If legitimate clients are rejected during deploy bursts, raise this value gradually.
+
 ## Architecture
 
 ![runner diagram](https://d.pr/i/1THmhI+)

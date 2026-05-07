@@ -116,7 +116,6 @@ func (perf *CLI) getMultisiteSites() (Sites, error) {
 	if err != nil {
 		return sites, err
 	}
-	raw = sanitizeJSONInput(raw)
 
 	jsonRes := make([]Site, 0)
 	if err = json.Unmarshal([]byte(raw), &jsonRes); err != nil {
@@ -138,7 +137,6 @@ func (perf *CLI) getSiteInfo() (siteInfo, error) {
 	if err != nil {
 		return siteInfo{}, err
 	}
-	raw = sanitizeJSONInput(raw)
 
 	jsonRes := make([]siteInfo, 0)
 	if err = json.Unmarshal([]byte(raw), &jsonRes); err != nil {
@@ -156,7 +154,6 @@ func (perf *CLI) GetEvents(site Site) ([]Event, error) {
 	if err != nil {
 		return emptyEvents, err
 	}
-	raw = sanitizeJSONInput(raw)
 
 	siteEvents := make([]Event, 0)
 	if err = json.Unmarshal([]byte(raw), &siteEvents); err != nil {
@@ -187,11 +184,12 @@ func (perf *CLI) runWpCmd(command []string) (string, error) {
 		t0 := time.Now()
 		result, err := perf.processCommandWithFPM(command)
 		perf.metrics.RecordFpmTiming(err == nil, time.Since(t0))
-		return result, err
+		return sanitizeJSONInput(result), err
 	}
 
 	// Non-FPM CLI, useful for local dev-env setups.
-	return perf.processCommand(command)
+	result, err := perf.processCommand(command)
+	return sanitizeJSONInput(result), err
 }
 
 func (perf *CLI) processCommand(command []string) (string, error) {

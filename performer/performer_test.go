@@ -1,6 +1,16 @@
 package performer
 
-import "testing"
+import (
+	"io"
+	"log"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/Automattic/cron-control-runner/logger"
+	"github.com/Automattic/cron-control-runner/metrics"
+)
 
 func TestEvent_LockKey(t *testing.T) {
 	type fields struct {
@@ -75,5 +85,31 @@ func TestSanitizeJSONInput(t *testing.T) {
 				t.Fatalf("sanitizeJSONInput() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestGetSiteInfo_EmptyJSONArrayReturnsError(t *testing.T) {
+	tmpDir := t.TempDir()
+	wpCLIPath := filepath.Join(tmpDir, "wp")
+
+	script := "#!/bin/sh\nprintf '[]'\n"
+	if err := os.WriteFile(wpCLIPath, []byte(script), 0755); err != nil {
+		t.Fatalf("failed to write fake wp-cli: %v", err)
+	}
+
+	perf := &CLI{
+		wpCLIPath: wpCLIPath,
+		wpPath:    tmpDir,
+		metrics:   metrics.Mock{},
+		logger:    logger.Logger{Logger: log.New(io.Discard, "", 0)},
+	}
+
+	_, err := perf.getSiteInfo()
+	if err == nil {
+		t.Fatal("expected error for empty WP-CLI response, got nil")
+	}
+
+	if !strings.Contains(err.Error(), "empty response") {
+		t.Fatalf("expected empty response error, got: %v", err)
 	}
 }

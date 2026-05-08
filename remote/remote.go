@@ -8,6 +8,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/subtle"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -61,7 +62,7 @@ var (
 )
 
 type config struct {
-	remoteToken   string
+	remoteTokenB  []byte
 	useWebsockets bool
 	wpCLIPath     string
 	wpPath        string
@@ -73,7 +74,7 @@ var wpCliEventSender EventSender
 // Setup configures the module (not super ideal, but this module needs some reworking to make it better)
 func Setup(remoteToken string, useWebsockets bool, wpCLIPath string, wpPath string, eventsWebhookURL string) {
 	remoteConfig = config{
-		remoteToken:   remoteToken,
+		remoteTokenB:  []byte(remoteToken),
 		useWebsockets: useWebsockets,
 		wpCLIPath:     wpCLIPath,
 		wpPath:        wpPath,
@@ -172,6 +173,13 @@ func authConn(conn net.Conn) {
 
 	log.Println("waiting for auth data")
 
+	if len(remoteConfig.remoteTokenB) == 0 {
+		conn.Write([]byte("invalid auth handshake"))
+		log.Printf("error remote token is not configured")
+		conn.Close()
+		return
+	}
+
 	conn.SetReadDeadline(time.Now().Add(time.Duration(5000 * time.Millisecond.Nanoseconds())))
 	bufReader := bufio.NewReader(conn)
 
@@ -204,7 +212,7 @@ func authConn(conn net.Conn) {
 	log.Printf("size of handshake %d\n", size)
 
 	// This is the minimum size to determine the protocol type
-	if size < len(remoteConfig.remoteToken)+gGUIDLength {
+	if size < len(remoteConfig.remoteTokenB)+gGUIDLength {
 		conn.Write([]byte("Error negotiating handshake"))
 		log.Println("error negotiating the handshake")
 		conn.Close()
@@ -217,7 +225,7 @@ func authConn(conn net.Conn) {
 	}
 
 	// Determine if the packet structure is the new version or not
-	if ';' != data[len(remoteConfig.remoteToken)] {
+	if ';' != data[len(remoteConfig.remoteTokenB)] {
 		token, GUID, rows, cols, offset, cmd, err = authenticateProtocolHeader2(data[:size-newlineChars])
 	} else {
 		token, GUID, rows, cols, cmd, err = authenticateProtocolHeader1(string(data[:size-newlineChars]))
@@ -231,7 +239,7 @@ func authConn(conn net.Conn) {
 		return
 	}
 
-	if token != remoteConfig.remoteToken {
+	if subtle.ConstantTimeCompare([]byte(token), remoteConfig.remoteTokenB) != 1 {
 		conn.Write([]byte("invalid auth handshake"))
 		log.Printf("error incorrect handshake string")
 		conn.Close()
@@ -293,8 +301,8 @@ func authenticateProtocolHeader1(dataString string) (string, string, uint16, uin
 	}
 
 	token = elems[0]
-	if len(token) != len(remoteConfig.remoteToken) {
-		return "", "", 0, 0, "", fmt.Errorf("error incorrect handshake reply size: %d != %d", len(remoteConfig.remoteToken), len(elems[0]))
+	if len(token) != len(remoteConfig.remoteTokenB) {
+		return "", "", 0, 0, "", fmt.Errorf("error incorrect handshake reply size: %d != %d", len(remoteConfig.remoteTokenB), len(elems[0]))
 	}
 
 	guid = elems[1]
@@ -321,30 +329,30 @@ func authenticateProtocolHeader2(data []byte) (string, string, uint16, uint16, i
 	var offset uint64
 	var err error
 
-	if len(data) < len(remoteConfig.remoteToken)+gGUIDLength+4+4+8 {
+	if len(data) < len(remoteConfig.remoteTokenB)+gGUIDLength+4+4+8 {
 		return "", "", 0, 0, 0, "", errors.New("error negotiating the v2 protocol handshake")
 	}
 
-	token = string(data[:len(remoteConfig.remoteToken)])
-	guid = string(data[len(remoteConfig.remoteToken) : len(remoteConfig.remoteToken)+gGUIDLength])
+	token = string(data[:len(remoteConfig.remoteTokenB)])
+	guid = string(data[len(remoteConfig.remoteTokenB) : len(remoteConfig.remoteTokenB)+gGUIDLength])
 
 	if !guidRegex.Match([]byte(guid)) {
 		return "", "", 0, 0, 0, "", errors.New("error incorrect GUID format")
 	}
 
-	rows, err = strconv.ParseUint(string(data[len(remoteConfig.remoteToken)+gGUIDLength:len(remoteConfig.remoteToken)+gGUIDLength+4]), 10, 16)
+	rows, err = strconv.ParseUint(string(data[len(remoteConfig.remoteTokenB)+gGUIDLength:len(remoteConfig.remoteTokenB)+gGUIDLength+4]), 10, 16)
 	if nil != err {
 		return "", "", 0, 0, 0, "", fmt.Errorf("error incorrect console rows setting: %s", err.Error())
 	}
 
-	cols, err = strconv.ParseUint(string(data[len(remoteConfig.remoteToken)+gGUIDLength+4:len(remoteConfig.remoteToken)+gGUIDLength+4+4]), 10, 16)
+	cols, err = strconv.ParseUint(string(data[len(remoteConfig.remoteTokenB)+gGUIDLength+4:len(remoteConfig.remoteTokenB)+gGUIDLength+4+4]), 10, 16)
 	if nil != err {
 		return "", "", 0, 0, 0, "", fmt.Errorf("error incorrect console columns setting: %s", err.Error())
 	}
 
-	offset = binary.LittleEndian.Uint64(data[len(remoteConfig.remoteToken)+gGUIDLength+4+4 : len(remoteConfig.remoteToken)+gGUIDLength+4+4+8])
+	offset = binary.LittleEndian.Uint64(data[len(remoteConfig.remoteTokenB)+gGUIDLength+4+4 : len(remoteConfig.remoteTokenB)+gGUIDLength+4+4+8])
 
-	return token, guid, uint16(rows), uint16(cols), int64(offset), string(data[len(remoteConfig.remoteToken)+gGUIDLength+4+4+8:]), nil
+	return token, guid, uint16(rows), uint16(cols), int64(offset), string(data[len(remoteConfig.remoteTokenB)+gGUIDLength+4+4+8:]), nil
 }
 
 func validateCommand(calledCmd string) (string, error) {

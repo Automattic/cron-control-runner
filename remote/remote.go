@@ -715,14 +715,14 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 	log.Printf("Creating the logfile %s", logFileName)
 	logFile, err := openOrCreateLogFileForWrite(logFileName)
 	if nil != err {
-		conn.Write([]byte("unable to launch the remote WP CLI process: " + err.Error()))
+		conn.Write([]byte("unable to launch the remote WP CLI process"))
 		conn.Close()
 		return fmt.Errorf("runWpCliCmdRemote: error creating the WP CLI log file: %s", err.Error())
 	}
 
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		conn.Write([]byte("unable to launch the remote WP CLI process: " + err.Error()))
+		conn.Write([]byte("unable to launch the remote WP CLI process"))
 		logFile.Close()
 		conn.Close()
 		return fmt.Errorf("runWpCliCmdRemote: error launching the WP CLI log file watcher: %s", err.Error())
@@ -766,7 +766,7 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 		return fmt.Errorf("runWpCliCmdRemote: error setting the WP CLI TTY to ignore CR: %s", e.Error())
 	}
 
-	readFile, err := os.OpenFile(logFileName, os.O_RDONLY|syscall.O_NOFOLLOW, os.ModeCharDevice)
+	readFile, err := openLogFileForRead(logFileName)
 	if nil != err {
 		conn.Close()
 		logFile.Close()
@@ -1017,8 +1017,14 @@ func streamLogs(conn net.Conn, GUID string) {
 	log.Printf("preparing to send the log file for GUID %s\n", GUID)
 
 	logFileName = fmt.Sprintf("/tmp/wp-cli-%s", GUID)
-	logFile, err := os.OpenFile(logFileName, os.O_RDONLY|os.O_SYNC|syscall.O_NOFOLLOW, 0666)
+	logFile, err := openLogFileForRead(logFileName)
 	if nil != err {
+		if os.IsNotExist(err) {
+			conn.Write([]byte(fmt.Sprintf("The WP CLI log file for GUID %s does not exist\n", GUID)))
+			log.Printf("The logfile %s does not exist\n", logFileName)
+			conn.Close()
+			return
+		}
 		conn.Write([]byte("error reading the WP CLI log file\n"))
 		log.Printf("error reading the WP CLI log file: %s\n", err.Error())
 		conn.Close()
@@ -1032,16 +1038,64 @@ func streamLogs(conn net.Conn, GUID string) {
 		if io.EOF == err {
 			break
 		}
-		conn.Write(buf[:read])
+		if err != nil {
+			log.Printf("error reading the WP CLI log file: %s\n", err.Error())
+			break
+		}
+		if err = writeAll(conn, buf[:read]); err != nil {
+			log.Printf("error writing the WP CLI log stream: %s\n", err.Error())
+			break
+		}
 	}
 	conn.Close()
 	logFile.Close()
 	log.Printf("log file for GUID %s sent\n", GUID)
 }
 
+func writeAll(w io.Writer, data []byte) error {
+	for len(data) > 0 {
+		n, err := w.Write(data)
+		if err != nil {
+			return err
+		}
+		if n <= 0 {
+			return io.ErrShortWrite
+		}
+		data = data[n:]
+	}
+
+	return nil
+}
+
+func openLogFileForRead(logFileName string) (*os.File, error) {
+	// Validate with a non-blocking open first to avoid hanging on FIFOs/special files.
+	logFile, err := os.OpenFile(logFileName, os.O_RDONLY|os.O_SYNC|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	fileInfo, err := logFile.Stat()
+	if err != nil {
+		_ = logFile.Close()
+		return nil, err
+	}
+
+	if !fileInfo.Mode().IsRegular() {
+		_ = logFile.Close()
+		return nil, fmt.Errorf("log file path %q is not a regular file", logFileName)
+	}
+
+	if err := syscall.SetNonblock(int(logFile.Fd()), false); err != nil {
+		_ = logFile.Close()
+		return nil, err
+	}
+
+	return logFile, nil
+}
+
 func openOrCreateLogFileForWrite(logFileName string) (*os.File, error) {
 	// Use atomic create without following symlinks to avoid TOCTOU attacks on /tmp paths.
-	logFile, err := os.OpenFile(logFileName, os.O_APPEND|os.O_WRONLY|os.O_CREATE|os.O_EXCL|os.O_SYNC|syscall.O_NOFOLLOW, 0666)
+	logFile, err := os.OpenFile(logFileName, os.O_APPEND|os.O_WRONLY|os.O_CREATE|os.O_EXCL|os.O_SYNC|syscall.O_NOFOLLOW, 0600)
 	if err == nil {
 		return logFile, nil
 	}
@@ -1050,8 +1104,7 @@ func openOrCreateLogFileForWrite(logFileName string) (*os.File, error) {
 		return nil, err
 	}
 
-	// Existing GUID files can be reused, but validate the file type before truncating.
-	// O_NONBLOCK avoids potential blocking on named pipes/special files.
+	// Compatibility: reuse existing GUID files, but validate safely before truncating.
 	logFile, err = os.OpenFile(logFileName, os.O_APPEND|os.O_WRONLY|os.O_SYNC|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		return nil, err
@@ -1066,6 +1119,22 @@ func openOrCreateLogFileForWrite(logFileName string) (*os.File, error) {
 	if !fileInfo.Mode().IsRegular() {
 		_ = logFile.Close()
 		return nil, fmt.Errorf("log file path %q is not a regular file", logFileName)
+	}
+
+	stat, ok := fileInfo.Sys().(*syscall.Stat_t)
+	if !ok {
+		_ = logFile.Close()
+		return nil, fmt.Errorf("could not determine owner for log file path %q", logFileName)
+	}
+
+	if int(stat.Uid) != os.Geteuid() {
+		_ = logFile.Close()
+		return nil, fmt.Errorf("log file path %q is not owned by current user", logFileName)
+	}
+
+	if err := syscall.SetNonblock(int(logFile.Fd()), false); err != nil {
+		_ = logFile.Close()
+		return nil, err
 	}
 
 	if err := logFile.Truncate(0); err != nil {

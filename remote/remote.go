@@ -1050,8 +1050,9 @@ func openOrCreateLogFileForWrite(logFileName string) (*os.File, error) {
 		return nil, err
 	}
 
-	// Existing GUID files can be reused by truncating in place, still without following symlinks.
-	logFile, err = os.OpenFile(logFileName, os.O_WRONLY|os.O_TRUNC|os.O_SYNC|syscall.O_NOFOLLOW, 0)
+	// Existing GUID files can be reused, but validate the file type before truncating.
+	// O_NONBLOCK avoids potential blocking on named pipes/special files.
+	logFile, err = os.OpenFile(logFileName, os.O_APPEND|os.O_WRONLY|os.O_SYNC|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -1065,6 +1066,11 @@ func openOrCreateLogFileForWrite(logFileName string) (*os.File, error) {
 	if !fileInfo.Mode().IsRegular() {
 		_ = logFile.Close()
 		return nil, fmt.Errorf("log file path %q is not a regular file", logFileName)
+	}
+
+	if err := logFile.Truncate(0); err != nil {
+		_ = logFile.Close()
+		return nil, err
 	}
 
 	return logFile, nil

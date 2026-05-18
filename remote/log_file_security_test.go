@@ -4,7 +4,9 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"syscall"
 	"testing"
+	"time"
 )
 
 func TestOpenOrCreateLogFileForWrite_CreatesNewFile(t *testing.T) {
@@ -79,5 +81,34 @@ func TestOpenOrCreateLogFileForWrite_RejectsSymlink(t *testing.T) {
 	}
 	if string(data) != "do-not-touch" {
 		t.Fatalf("symlink target was modified, got %q", string(data))
+	}
+}
+
+func TestOpenOrCreateLogFileForWrite_RejectsFifoWithoutBlocking(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fifo behavior differs on windows")
+	}
+
+	path := filepath.Join(t.TempDir(), "wp-cli-guid.fifo")
+	if err := syscall.Mkfifo(path, 0600); err != nil {
+		t.Fatalf("mkfifo() setup error = %v", err)
+	}
+
+	errCh := make(chan error, 1)
+	go func() {
+		f, err := openOrCreateLogFileForWrite(path)
+		if err == nil {
+			_ = f.Close()
+		}
+		errCh <- err
+	}()
+
+	select {
+	case err := <-errCh:
+		if err == nil {
+			t.Fatal("expected error when log path is a fifo")
+		}
+	case <-time.After(1 * time.Second):
+		t.Fatal("openOrCreateLogFileForWrite() blocked on fifo")
 	}
 }

@@ -25,4 +25,3 @@ updates:
           - major
     cooldown:
       default-days: 7
-      semver-major-days: 14

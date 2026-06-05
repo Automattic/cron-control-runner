@@ -25,6 +25,7 @@ type options struct {
 	wpCLIPath             string
 	wpPath                string
 	fpmURL                string
+	fpmResponseTimeout    time.Duration
 	orchestratorConfig    orchestrator.Config
 	remoteToken           string
 	useWebsockets         bool
@@ -61,7 +62,7 @@ func main() {
 		logger.Infof("Using Mock Performer")
 		perf = &performer.Mock{UseSleeps: true, LogCommands: false, RotateSites: true}
 	} else {
-		perf = performer.NewCLI(options.wpCLIPath, options.wpPath, options.fpmURL, metricsManager, logger)
+		perf = performer.NewCLI(options.wpCLIPath, options.wpPath, options.fpmURL, options.fpmResponseTimeout, metricsManager, logger)
 	}
 
 	// Setup the locker, if enabled.
@@ -92,12 +93,13 @@ func main() {
 func getCliOptions() options {
 	// Set defaults
 	options := options{
-		metricsAddress: "",
-		useMockData:    false,
-		debug:          false,
-		wpCLIPath:      "/usr/local/bin/wp",
-		wpPath:         "/var/www/html",
-		fpmURL:         "",
+		metricsAddress:     "",
+		useMockData:        false,
+		debug:              false,
+		wpCLIPath:          "/usr/local/bin/wp",
+		wpPath:             "/var/www/html",
+		fpmURL:             "",
+		fpmResponseTimeout: 0,
 		orchestratorConfig: orchestrator.Config{
 			GetSitesInterval:     60 * time.Second,
 			GetEventsInterval:    30 * time.Second,
@@ -126,6 +128,7 @@ func getCliOptions() options {
 	flag.StringVar(&(options.wpCLIPath), "wp-cli-path", options.wpCLIPath, "path to WP-CLI binary")
 	flag.StringVar(&(options.wpPath), "wp-path", options.wpPath, "path to the WordPress installation")
 	flag.StringVar(&(options.fpmURL), "fpm-url", options.fpmURL, "URL for the php-fpm server or socket (e.g. unix:///var/run/fastcgi.sock)")
+	flag.DurationVar(&(options.fpmResponseTimeout), "fpm-response-timeout", options.fpmResponseTimeout, "maximum time to wait while reading an FPM response; 0 disables timeout")
 
 	// Used for the Orchestrator
 	flag.DurationVar(&(options.orchestratorConfig.GetSitesInterval), "get-sites-interval", options.orchestratorConfig.GetSitesInterval, "get-sites interval")

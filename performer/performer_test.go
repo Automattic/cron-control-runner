@@ -7,9 +7,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Automattic/cron-control-runner/logger"
 	"github.com/Automattic/cron-control-runner/metrics"
+	"github.com/yookoala/gofast"
 )
 
 func TestEvent_LockKey(t *testing.T) {
@@ -47,6 +49,29 @@ func TestEvent_LockKey(t *testing.T) {
 				t.Errorf("LockKey() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestProcessCommandWithFPM_ResponseTimeout(t *testing.T) {
+	perf := &CLI{
+		wpPath:             t.TempDir(),
+		metrics:            metrics.Mock{},
+		logger:             logger.Logger{Logger: log.New(io.Discard, "", 0)},
+		fpmResponseTimeout: 10 * time.Millisecond,
+		fpm: func() (gofast.Client, error) {
+			return gofast.ClientFunc(func(req *gofast.Request) (*gofast.ResponsePipe, error) {
+				return gofast.NewResponsePipe(), nil
+			}), nil
+		},
+	}
+
+	_, err := perf.processCommandWithFPM([]string{"cron-control", "orchestrate", "runner-only", "get-info", "--format=json"})
+	if err == nil {
+		t.Fatal("expected timeout error, got nil")
+	}
+
+	if !strings.Contains(err.Error(), "response write timed out") {
+		t.Fatalf("expected response write timeout error, got: %v", err)
 	}
 }
 

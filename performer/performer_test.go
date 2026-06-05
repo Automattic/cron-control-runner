@@ -57,7 +57,7 @@ func TestProcessCommandWithFPM_ResponseTimeout(t *testing.T) {
 		wpPath:             t.TempDir(),
 		metrics:            metrics.Mock{},
 		logger:             logger.Logger{Logger: log.New(io.Discard, "", 0)},
-		fpmResponseTimeout: 10 * time.Millisecond,
+		fpmResponseTimeout: 100 * time.Millisecond,
 		fpm: func() (gofast.Client, error) {
 			return gofast.ClientFunc(func(req *gofast.Request) (*gofast.ResponsePipe, error) {
 				return gofast.NewResponsePipe(), nil
@@ -70,8 +70,8 @@ func TestProcessCommandWithFPM_ResponseTimeout(t *testing.T) {
 		t.Fatal("expected timeout error, got nil")
 	}
 
-	if !strings.Contains(err.Error(), "response write timed out") {
-		t.Fatalf("expected response write timeout error, got: %v", err)
+	if !strings.Contains(err.Error(), "response read timed out") {
+		t.Fatalf("expected response read timeout error, got: %v", err)
 	}
 }
 

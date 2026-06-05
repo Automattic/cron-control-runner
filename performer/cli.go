@@ -351,7 +351,7 @@ func (perf *CLI) writeFpmResponse(fcgiResp *gofast.ResponsePipe, responseWriter 
 		return err
 	case <-timer.C:
 		fcgiResp.Close()
-		return fmt.Errorf("fpm error: response write timed out after %s", perf.fpmResponseTimeout)
+		return fmt.Errorf("fpm error: response read timed out after %s", perf.fpmResponseTimeout)
 	}
 }
 

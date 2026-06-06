@@ -54,6 +54,8 @@ It's helpful to specify some environment variables (e.g. in an `.env` file):
 	- depth of events channel, 0 (default) is unbuffered
 - `-fpm-url` string
 	- URL for the php-fpm server or socket (e.g. unix:///var/run/fastcgi.sock)
+- `-fpm-response-timeout` duration
+	- maximum time to wait while reading an FPM response; `0` disables timeout
 - `-prom-metrics-address` string
 	- Listen address for prometheus metrics (e.g. :4444); if set, can scrape http://:4444/metrics.
 - `-use-mock-data`

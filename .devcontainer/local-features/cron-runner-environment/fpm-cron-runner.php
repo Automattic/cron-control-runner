@@ -64,6 +64,7 @@ register_shutdown_function( function () use ( $outfh, $errfh ) {
 	fseek( $errfh, 0 );
 	$result['stderr'] = stream_get_contents( $errfh );
 	fclose( $errfh );
+	header_remove();
 	header( 'Status: 200 OK' );
 	header( 'Content-Type: application/json' );
 	echo json_encode( $result );

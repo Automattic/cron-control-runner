@@ -1,6 +1,7 @@
 package performer
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,11 +25,12 @@ var _ Performer = &CLI{}
 // CLI uses the CLI interface for site interactions.
 // Don't initialize directly, use NewCLI()
 type CLI struct {
-	wpCLIPath string
-	wpPath    string
-	metrics   metrics.Manager
-	logger    logger.Logger
-	fpm       gofast.ClientFactory
+	wpCLIPath          string
+	wpPath             string
+	metrics            metrics.Manager
+	logger             logger.Logger
+	fpm                gofast.ClientFactory
+	fpmResponseTimeout time.Duration
 }
 
 func (perf *CLI) IsReady() bool {
@@ -50,12 +52,13 @@ type siteInfo struct {
 }
 
 // NewCLI sets up the CLI Performer w/ special initializations.
-func NewCLI(wpCLIPath string, wpPath string, fpmURL string, metrics metrics.Manager, logger logger.Logger) *CLI {
+func NewCLI(wpCLIPath string, wpPath string, fpmURL string, fpmResponseTimeout time.Duration, metrics metrics.Manager, logger logger.Logger) *CLI {
 	performer := &CLI{
-		wpCLIPath: wpCLIPath,
-		wpPath:    wpPath,
-		metrics:   metrics,
-		logger:    logger,
+		wpCLIPath:          wpCLIPath,
+		wpPath:             wpPath,
+		metrics:            metrics,
+		logger:             logger,
+		fpmResponseTimeout: fpmResponseTimeout,
 	}
 
 	if fpmURL != "" {
@@ -252,7 +255,12 @@ func (perf *CLI) processCommandWithFPM(subcommand []string) (string, error) {
 		return "", err
 	}
 
-	fcgiReq := gofast.NewRequest(nil)
+	fcgiReq, cancel, err := perf.newFpmRequest()
+	if err != nil {
+		return "", err
+	}
+	defer cancel()
+
 	fcgiReq.Params = map[string]string{
 		"REQUEST_METHOD":    "GET",
 		"SCRIPT_FILENAME":   "/var/wpvip/fpm-cron-runner.php",
@@ -270,7 +278,7 @@ func (perf *CLI) processCommandWithFPM(subcommand []string) (string, error) {
 	stdOut := &strings.Builder{}
 	hrw := &fakeHTTPResponseWriter{Dest: stdOut}
 
-	if err = fcgiResp.WriteTo(hrw, stdErr); err != nil {
+	if err = perf.writeFpmResponse(fcgiResp, hrw, stdErr); err != nil {
 		return "", err
 	}
 
@@ -308,6 +316,43 @@ func (perf *CLI) processCommandWithFPM(subcommand []string) (string, error) {
 	}
 
 	return res.Buf, err
+}
+
+func (perf *CLI) newFpmRequest() (*gofast.Request, context.CancelFunc, error) {
+	if perf.fpmResponseTimeout <= 0 {
+		return gofast.NewRequest(nil), func() {}, nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), perf.fpmResponseTimeout)
+	rawReq, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://cron-control-runner.local/", nil)
+	if err != nil {
+		cancel()
+		return nil, nil, err
+	}
+
+	return gofast.NewRequest(rawReq), cancel, nil
+}
+
+func (perf *CLI) writeFpmResponse(fcgiResp *gofast.ResponsePipe, responseWriter http.ResponseWriter, stdErr io.Writer) error {
+	if perf.fpmResponseTimeout <= 0 {
+		return fcgiResp.WriteTo(responseWriter, stdErr)
+	}
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- fcgiResp.WriteTo(responseWriter, stdErr)
+	}()
+
+	timer := time.NewTimer(perf.fpmResponseTimeout)
+	defer timer.Stop()
+
+	select {
+	case err := <-errCh:
+		return err
+	case <-timer.C:
+		fcgiResp.Close()
+		return fmt.Errorf("fpm error: response read timed out after %s", perf.fpmResponseTimeout)
+	}
 }
 
 func trimJSONPreamble(input string) string {

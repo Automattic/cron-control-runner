@@ -1,6 +1,6 @@
 module github.com/Automattic/cron-control-runner
 
-go 1.23.0
+go 1.23
 
 require (
 	github.com/bradfitz/gomemcache v0.0.0-20190913173617-a41fca850d0b

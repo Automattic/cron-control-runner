@@ -909,6 +909,8 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 				continue
 			}
 
+			log.Printf("WP-CLI output: %s", string(buf[:read]))
+
 			atomic.AddInt64(&wpcli.BytesLogged, int64(read))
 
 			written, err = logFile.Write(buf[:read])

@@ -1,6 +1,6 @@
 module github.com/Automattic/cron-control-runner
 
-go 1.23.0
+go 1.25.0
 
 require (
 	github.com/bradfitz/gomemcache v0.0.0-20190913173617-a41fca850d0b
@@ -10,9 +10,9 @@ require (
 	github.com/lthibault/jitterbug/v2 v2.2.2
 	github.com/prometheus/client_golang v1.11.1
 	github.com/yookoala/gofast v0.6.0
-	golang.org/x/net v0.38.0
-	golang.org/x/sys v0.31.0
-	golang.org/x/term v0.30.0
+	golang.org/x/net v0.55.0
+	golang.org/x/sys v0.45.0
+	golang.org/x/term v0.43.0
 	gopkg.in/tomb.v2 v2.0.0-20161208151619-d5d1b5820637
 )
 

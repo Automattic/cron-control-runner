@@ -39,7 +39,7 @@ It's helpful to specify some environment variables (e.g. in an `.env` file):
 - `-debug`
 	- enables debug mode (extra logging)
 - `-wp-cli-path` string
-	- path to WP-CLI binary (default "/usr/local/bin/wp")
+	- path to WP-CLI binary (default "/usr/local/bin/wp"). When not using `-fpm-url`, this is run as a script by `php` (found via `PATH`), so it may also point at an extracted wp-cli tree's `php/boot-fs.php`.
 - `-wp-path` string
 	- path to the WordPress installation (default "/var/www/html")
 - `-get-sites-interval` duration
@@ -78,6 +78,8 @@ Events are processed as soon as possible once in the queue. There are Y (`num-ru
 ### performer
 
 The Performer is an abstraction layer that does the real interaction w/ sites. The orchestrator is unaware how getEvents/runEvents is happening, it just calls on the performer to do the dirty work. This allows the event fetching and running to be done through various means such as WP CLI or REST API, and provides easy mocking. Currently there are just two implementations here: the `Mock` performer (helps feed test data into the orchestrator while testing), and the `CLI` performer (runs the real cron-control CLIs).
+
+Without `-fpm-url`, the `CLI` performer runs every WP-CLI command as `php -d <opcache settings> <wp-cli-path> ...` with an opcache file cache under the OS temp dir (`cron-control-runner-opcache`). Each short-lived process then loads precompiled opcodes from disk instead of recompiling WordPress and every plugin on each call, which roughly halves the cost of a `list-due-batch` on a large codebase. Timestamp validation stays on, so changed files are recompiled automatically; the directory can simply be left to the container's lifetime.
 
 ### metrics & logger
 

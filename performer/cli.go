@@ -9,7 +9,9 @@ import (
 	"math/rand"
 	"net/http"
 	"net/url"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 	"unicode"
@@ -27,6 +29,8 @@ var _ Performer = &CLI{}
 type CLI struct {
 	wpCLIPath          string
 	wpPath             string
+	phpPath            string
+	opcacheDir         string
 	metrics            metrics.Manager
 	logger             logger.Logger
 	fpm                gofast.ClientFactory
@@ -51,14 +55,40 @@ type siteInfo struct {
 	Disabled  int    `json:"disabled"`
 }
 
+// opcacheSettings are passed as `php -d` flags for every non-FPM wp-cli invocation, so each
+// short-lived process loads precompiled opcodes from disk instead of recompiling WordPress and
+// every plugin on every call. Timestamp validation is left at its default, so a changed source
+// file is recompiled and the cache never serves stale code.
+//
+// Note: opcache will not cache a file whose mtime is exactly 0 (it looks like a failed stat), so
+// on images that zero mtimes for reproducible builds those files are compiled on every call.
+var opcacheSettings = []string{
+	"opcache.enable_cli=1",
+	"opcache.file_cache_only=1",
+}
+
+// phpBinary is resolved from PATH, the same way the wp-cli shebang (#!/usr/bin/env php) does it.
+const phpBinary = "php"
+
+func defaultOpcacheDir() string {
+	return filepath.Join(os.TempDir(), "cron-control-runner-opcache")
+}
+
 // NewCLI sets up the CLI Performer w/ special initializations.
 func NewCLI(wpCLIPath string, wpPath string, fpmURL string, fpmResponseTimeout time.Duration, metrics metrics.Manager, logger logger.Logger) *CLI {
 	performer := &CLI{
 		wpCLIPath:          wpCLIPath,
 		wpPath:             wpPath,
+		phpPath:            phpBinary,
+		opcacheDir:         defaultOpcacheDir(),
 		metrics:            metrics,
 		logger:             logger,
 		fpmResponseTimeout: fpmResponseTimeout,
+	}
+
+	if err := os.MkdirAll(performer.opcacheDir, 0o755); err != nil {
+		// Not fatal: php will warn on stderr and run uncached.
+		logger.Errorf("could not create opcache file cache dir %q: %v", performer.opcacheDir, err)
 	}
 
 	if fpmURL != "" {
@@ -200,10 +230,29 @@ func (perf *CLI) runWpCmd(command []string) (string, error) {
 	return trimJSONPreamble(result), err
 }
 
+// wpCommand builds the exec.Cmd for a non-FPM wp-cli invocation: php is run explicitly so the
+// opcache settings can be passed as -d flags, with wpCLIPath as the script (the phar, or an
+// extracted boot-fs.php).
+func (perf *CLI) wpCommand(command []string) *exec.Cmd {
+	args := make([]string, 0, 2*(len(opcacheSettings)+1)+1+len(command))
+	for _, setting := range opcacheSettings {
+		args = append(args, "-d", setting)
+	}
+	args = append(args, "-d", "opcache.file_cache="+perf.opcacheDir)
+	args = append(args, perf.wpCLIPath)
+	args = append(args, command...)
+
+	php := perf.phpPath
+	if php == "" {
+		php = phpBinary
+	}
+	return exec.Command(php, args...)
+}
+
 func (perf *CLI) processCommand(command []string) (string, error) {
 	var stdout, stderr strings.Builder
 
-	wpCli := exec.Command(perf.wpCLIPath, command...)
+	wpCli := perf.wpCommand(command)
 	wpCli.Stdout = &stdout
 	wpCli.Stderr = &stderr
 

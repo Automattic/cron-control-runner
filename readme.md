@@ -115,5 +115,7 @@ cron_control_runner_run_worker_state_count{state="busy"}
 cron_control_runner_run_worker_state_count{state="idle"}
 cron_control_runner_run_worker_state_count{state="max"}
 
-// TODO: insert RecordFpmTiming() metrics.
+cron_control_runner_wpcli_call_duration_seconds_bucket{command="cron-control orchestrate runner-only run --timestamp=[param] --action=[param] --instance=[param] --url=[param]|...",backend="fpm|cli",status="success|error",le="..."}
+cron_control_runner_wpcli_call_duration_seconds_count{command="...",backend="fpm|cli",status="success|error"}
+cron_control_runner_wpcli_call_duration_seconds_sum{command="...",backend="fpm|cli",status="success|error"}
 ```

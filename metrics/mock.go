@@ -54,9 +54,9 @@ func (m Mock) RecordRunWorkerStats(currBusy int32, max int32) {
 	}
 }
 
-// RecordFpmTiming track FPM CLI calls.
-func (m Mock) RecordFpmTiming(isSuccess bool, elapsed time.Duration) {
+// RecordWpcliCall tracks WP-CLI invocations by backend.
+func (m Mock) RecordWpcliCall(command string, backend string, isSuccess bool, elapsed time.Duration) {
 	if m.Log {
-		log.Printf("metrics: RecordFpmTiming( isSuccess: %t, elapsed: %s,)", isSuccess, elapsed)
+		log.Printf("metrics: RecordWpcliCall(command: %s, backend: %s, isSuccess: %t, elapsed: %s)", command, backend, isSuccess, elapsed)
 	}
 }

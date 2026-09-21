@@ -13,6 +13,6 @@ type Manager interface {
 	RecordRunEvent(isSuccess bool, elapsed time.Duration, siteURL string, reason string)
 	RecordLockEvent(group locker.LockGroup, status string)
 	RecordRunWorkerStats(currBusy int32, max int32)
-	RecordFpmTiming(isSuccess bool, elapsed time.Duration)
+	RecordWpcliCall(command string, backend string, isSuccess bool, elapsed time.Duration)
 	RecordSiteEventLag(url string, oldestEventTs time.Time)
 }

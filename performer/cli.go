@@ -214,19 +214,44 @@ func (perf *CLI) RunEvent(event Event) error {
 	return err
 }
 
+// wpCmdName returns the metric label for a WP-CLI command: the tokens joined by a space, with
+// the value of every "--flag=value" replaced by "[param]". The variable parts of our commands
+// (site URL, event timestamp/action/instance) are all passed as flag values, so the result is
+// a small, fixed set. Keep it that way: never pass per-site or per-event values positionally.
+func wpCmdName(command []string) string {
+	parts := make([]string, 0, len(command))
+	for _, arg := range command {
+		if strings.HasPrefix(arg, "--") {
+			if flag, _, found := strings.Cut(arg, "="); found {
+				arg = flag + "=[param]"
+			}
+		}
+		parts = append(parts, arg)
+	}
+	return strings.Join(parts, " ")
+}
+
+// runWpCmd executes a WP-CLI command via FPM when configured, otherwise via the local CLI.
 func (perf *CLI) runWpCmd(command []string) (string, error) {
+	name := wpCmdName(command)
 	// `--quiet`` included to prevent WP-CLI commands from generating invalid JSON
 	command = append(command, "--allow-root", "--quiet", fmt.Sprintf("--path=%s", perf.wpPath))
 
+	t0 := time.Now()
+	var (
+		backend string
+		result  string
+		err     error
+	)
 	if perf.fpm != nil {
-		t0 := time.Now()
-		result, err := perf.processCommandWithFPM(command)
-		perf.metrics.RecordFpmTiming(err == nil, time.Since(t0))
-		return trimJSONPreamble(result), err
+		backend = "fpm"
+		result, err = perf.processCommandWithFPM(command)
+	} else {
+		// Non-FPM CLI, useful for local dev-env setups.
+		backend = "cli"
+		result, err = perf.processCommand(command)
 	}
-
-	// Non-FPM CLI, useful for local dev-env setups.
-	result, err := perf.processCommand(command)
+	perf.metrics.RecordWpcliCall(name, backend, err == nil, time.Since(t0))
 	return trimJSONPreamble(result), err
 }
 

@@ -26,6 +26,7 @@ type options struct {
 	wpPath                string
 	fpmURL                string
 	fpmResponseTimeout    time.Duration
+	disableOpcache        bool
 	orchestratorConfig    orchestrator.Config
 	remoteToken           string
 	useWebsockets         bool
@@ -62,7 +63,7 @@ func main() {
 		logger.Infof("Using Mock Performer")
 		perf = &performer.Mock{UseSleeps: true, LogCommands: false, RotateSites: true}
 	} else {
-		perf = performer.NewCLI(options.wpCLIPath, options.wpPath, options.fpmURL, options.fpmResponseTimeout, metricsManager, logger)
+		perf = performer.NewCLI(options.wpCLIPath, options.wpPath, options.fpmURL, options.fpmResponseTimeout, options.disableOpcache, metricsManager, logger)
 	}
 
 	// Setup the locker, if enabled.
@@ -100,6 +101,7 @@ func getCliOptions() options {
 		wpPath:             "/var/www/html",
 		fpmURL:             "",
 		fpmResponseTimeout: 0,
+		disableOpcache:     false,
 		orchestratorConfig: orchestrator.Config{
 			GetSitesInterval:     60 * time.Second,
 			GetEventsInterval:    30 * time.Second,
@@ -129,6 +131,7 @@ func getCliOptions() options {
 	flag.StringVar(&(options.wpPath), "wp-path", options.wpPath, "path to the WordPress installation")
 	flag.StringVar(&(options.fpmURL), "fpm-url", options.fpmURL, "URL for the php-fpm server or socket (e.g. unix:///var/run/fastcgi.sock)")
 	flag.DurationVar(&(options.fpmResponseTimeout), "fpm-response-timeout", options.fpmResponseTimeout, "maximum time to wait while reading an FPM response; 0 disables timeout")
+	flag.BoolVar(&(options.disableOpcache), "disable-opcache", options.disableOpcache, "run WP-CLI with opcache off instead of with the file cache (non-FPM only; for measuring the cache's effect)")
 
 	// Used for the Orchestrator
 	flag.DurationVar(&(options.orchestratorConfig.GetSitesInterval), "get-sites-interval", options.orchestratorConfig.GetSitesInterval, "get-sites interval")

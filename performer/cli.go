@@ -31,6 +31,7 @@ type CLI struct {
 	wpPath             string
 	phpPath            string
 	opcacheDir         string
+	phpFlags           []string // `-d` settings for every non-FPM php invocation, fixed at construction
 	metrics            metrics.Manager
 	logger             logger.Logger
 	fpm                gofast.ClientFactory
@@ -74,21 +75,34 @@ func defaultOpcacheDir() string {
 	return filepath.Join(os.TempDir(), "cron-control-runner-opcache")
 }
 
+// phpFlagsFor returns the `-d` settings for non-FPM invocations: the opcache file cache by default,
+// or opcache off when disableOpcache is set (so the cache's effect can be measured in place).
+func phpFlagsFor(disableOpcache bool, opcacheDir string) []string {
+	if disableOpcache {
+		return []string{"opcache.enable_cli=0"}
+	}
+	return append(append([]string{}, opcacheSettings...), "opcache.file_cache="+opcacheDir)
+}
+
 // NewCLI sets up the CLI Performer w/ special initializations.
-func NewCLI(wpCLIPath string, wpPath string, fpmURL string, fpmResponseTimeout time.Duration, metrics metrics.Manager, logger logger.Logger) *CLI {
+func NewCLI(wpCLIPath string, wpPath string, fpmURL string, fpmResponseTimeout time.Duration, disableOpcache bool, metrics metrics.Manager, logger logger.Logger) *CLI {
+	opcacheDir := defaultOpcacheDir()
 	performer := &CLI{
 		wpCLIPath:          wpCLIPath,
 		wpPath:             wpPath,
 		phpPath:            phpBinary,
-		opcacheDir:         defaultOpcacheDir(),
+		opcacheDir:         opcacheDir,
+		phpFlags:           phpFlagsFor(disableOpcache, opcacheDir),
 		metrics:            metrics,
 		logger:             logger,
 		fpmResponseTimeout: fpmResponseTimeout,
 	}
 
-	if err := os.MkdirAll(performer.opcacheDir, 0o755); err != nil {
+	if disableOpcache {
+		logger.Infof("Opcache disabled for WP-CLI invocations")
+	} else if err := os.MkdirAll(opcacheDir, 0o755); err != nil {
 		// Not fatal: php will warn on stderr and run uncached.
-		logger.Errorf("could not create opcache file cache dir %q: %v", performer.opcacheDir, err)
+		logger.Errorf("could not create opcache file cache dir %q: %v", opcacheDir, err)
 	}
 
 	if fpmURL != "" {
@@ -259,11 +273,10 @@ func (perf *CLI) runWpCmd(command []string) (string, error) {
 // opcache settings can be passed as -d flags, with wpCLIPath as the script (the phar, or an
 // extracted boot-fs.php).
 func (perf *CLI) wpCommand(command []string) *exec.Cmd {
-	args := make([]string, 0, 2*(len(opcacheSettings)+1)+1+len(command))
-	for _, setting := range opcacheSettings {
-		args = append(args, "-d", setting)
+	args := make([]string, 0, 2*len(perf.phpFlags)+1+len(command))
+	for _, flag := range perf.phpFlags {
+		args = append(args, "-d", flag)
 	}
-	args = append(args, "-d", "opcache.file_cache="+perf.opcacheDir)
 	args = append(args, perf.wpCLIPath)
 	args = append(args, command...)
 

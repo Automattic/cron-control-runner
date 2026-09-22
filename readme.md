@@ -56,6 +56,8 @@ It's helpful to specify some environment variables (e.g. in an `.env` file):
 	- URL for the php-fpm server or socket (e.g. unix:///var/run/fastcgi.sock)
 - `-fpm-response-timeout` duration
 	- maximum time to wait while reading an FPM response; `0` disables timeout
+- `-disable-opcache`
+	- run WP-CLI with opcache off instead of with the file cache. Only affects the non-FPM path; meant for measuring the cache's effect on a deployment, not for regular use.
 - `-prom-metrics-address` string
 	- Listen address for prometheus metrics (e.g. :4444); if set, can scrape http://:4444/metrics.
 - `-use-mock-data`

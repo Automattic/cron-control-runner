@@ -153,43 +153,28 @@ func fakePHP(t *testing.T, dir string) string {
 	return path
 }
 
-func TestWpCommand_PHPFlags(t *testing.T) {
-	tests := []struct {
-		name           string
-		disableOpcache bool
-		want           []string
-	}{
-		{
-			name: "opcache file cache by default",
-			want: []string{
-				"-d", "opcache.enable_cli=1",
-				"-d", "opcache.file_cache_only=1",
-				"-d", "opcache.file_cache_consistency_checks=0",
-				"-d", "opcache.file_cache=/tmp/opcache-test",
-			},
-		},
-		{
-			name:           "opcache off when disabled",
-			disableOpcache: true,
-			want:           []string{"-d", "opcache.enable_cli=0"},
-		},
+func TestWpCommand_RunsPHPWithOpcacheFlags(t *testing.T) {
+	perf := &CLI{
+		wpCLIPath: "/usr/local/bin/wp",
+		phpPath:   "/usr/bin/php",
+		phpFlags:  phpFlagsFor("/tmp/opcache-test"),
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			perf := &CLI{
-				wpCLIPath: "/usr/local/bin/wp",
-				phpPath:   "/usr/bin/php",
-				phpFlags:  phpFlagsFor(tt.disableOpcache, "/tmp/opcache-test"),
-			}
-			cmd := perf.wpCommand([]string{"option", "get", "home", "--allow-root"})
-			if cmd.Args[0] != "/usr/bin/php" {
-				t.Fatalf("expected php to be executed, got %q", cmd.Args[0])
-			}
-			want := append(append(tt.want, "/usr/local/bin/wp"), "option", "get", "home", "--allow-root")
-			if got := cmd.Args[1:]; strings.Join(got, " ") != strings.Join(want, " ") {
-				t.Fatalf("unexpected args:\n got: %v\nwant: %v", got, want)
-			}
-		})
+
+	cmd := perf.wpCommand([]string{"option", "get", "home", "--allow-root"})
+	if cmd.Args[0] != "/usr/bin/php" {
+		t.Fatalf("expected php to be executed, got %q", cmd.Args[0])
+	}
+
+	want := []string{
+		"-d", "opcache.enable_cli=1",
+		"-d", "opcache.file_cache_only=1",
+		"-d", "opcache.file_cache_consistency_checks=0",
+		"-d", "opcache.file_cache=/tmp/opcache-test",
+		"/usr/local/bin/wp",
+		"option", "get", "home", "--allow-root",
+	}
+	if got := cmd.Args[1:]; strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Fatalf("unexpected args:\n got: %v\nwant: %v", got, want)
 	}
 }
 
@@ -205,7 +190,7 @@ func TestNewCLI_CreatesOpcacheDirUnderTempDir(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("TMPDIR", tmp)
 
-	perf := NewCLI("/usr/local/bin/wp", tmp, "", 0, false, metrics.Mock{}, logger.Logger{Logger: log.New(io.Discard, "", 0)})
+	perf := NewCLI("/usr/local/bin/wp", tmp, "", 0, metrics.Mock{}, logger.Logger{Logger: log.New(io.Discard, "", 0)})
 
 	if !strings.HasPrefix(perf.opcacheDir, tmp) {
 		t.Fatalf("expected opcache dir under %q, got %q", tmp, perf.opcacheDir)

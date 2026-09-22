@@ -78,32 +78,27 @@ func defaultOpcacheDir() string {
 	return filepath.Join(os.TempDir(), "cron-control-runner-opcache")
 }
 
-// phpFlagsFor returns the `-d` settings for non-FPM invocations: the opcache file cache by default,
-// or opcache off when disableOpcache is set (so the cache's effect can be measured in place).
-func phpFlagsFor(disableOpcache bool, opcacheDir string) []string {
-	if disableOpcache {
-		return []string{"opcache.enable_cli=0"}
-	}
+// phpFlagsFor returns the `-d` settings for non-FPM invocations: opcacheSettings plus the file
+// cache location.
+func phpFlagsFor(opcacheDir string) []string {
 	return append(append([]string{}, opcacheSettings...), "opcache.file_cache="+opcacheDir)
 }
 
 // NewCLI sets up the CLI Performer w/ special initializations.
-func NewCLI(wpCLIPath string, wpPath string, fpmURL string, fpmResponseTimeout time.Duration, disableOpcache bool, metrics metrics.Manager, logger logger.Logger) *CLI {
+func NewCLI(wpCLIPath string, wpPath string, fpmURL string, fpmResponseTimeout time.Duration, metrics metrics.Manager, logger logger.Logger) *CLI {
 	opcacheDir := defaultOpcacheDir()
 	performer := &CLI{
 		wpCLIPath:          wpCLIPath,
 		wpPath:             wpPath,
 		phpPath:            phpBinary,
 		opcacheDir:         opcacheDir,
-		phpFlags:           phpFlagsFor(disableOpcache, opcacheDir),
+		phpFlags:           phpFlagsFor(opcacheDir),
 		metrics:            metrics,
 		logger:             logger,
 		fpmResponseTimeout: fpmResponseTimeout,
 	}
 
-	if disableOpcache {
-		logger.Infof("Opcache disabled for WP-CLI invocations")
-	} else if err := os.MkdirAll(opcacheDir, 0o755); err != nil {
+	if err := os.MkdirAll(opcacheDir, 0o755); err != nil {
 		// Not fatal: php will warn on stderr and run uncached.
 		logger.Errorf("could not create opcache file cache dir %q: %v", opcacheDir, err)
 	}

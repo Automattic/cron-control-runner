@@ -66,6 +66,9 @@ type siteInfo struct {
 var opcacheSettings = []string{
 	"opcache.enable_cli=1",
 	"opcache.file_cache_only=1",
+	// Skip the Adler-32 over every cached file on load. The cache is written once by this same
+	// image and dies with the container, so corruption is not a realistic risk;
+	"opcache.file_cache_consistency_checks=0",
 }
 
 // phpBinary is resolved from PATH, the same way the wp-cli shebang (#!/usr/bin/env php) does it.

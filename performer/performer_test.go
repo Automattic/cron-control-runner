@@ -164,6 +164,7 @@ func TestWpCommand_PHPFlags(t *testing.T) {
 			want: []string{
 				"-d", "opcache.enable_cli=1",
 				"-d", "opcache.file_cache_only=1",
+				"-d", "opcache.file_cache_consistency_checks=0",
 				"-d", "opcache.file_cache=/tmp/opcache-test",
 			},
 		},

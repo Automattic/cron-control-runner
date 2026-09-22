@@ -202,7 +202,9 @@ func (p *Prom) initializeMetrics() {
 		Subsystem: "wpcli",
 		Name:      "call_duration_seconds",
 		Help:      "Wall time of a single WP-CLI invocation, by subcommand and backend (fpm or cli)",
-		Buckets:   prometheus.DefBuckets,
+		// Dense between 0 and 1s, where orchestration calls land (~0.4-0.6s), so a p95 there is not
+		// pinned to a bucket edge; sparse above for the `run` command, which includes the job itself.
+		Buckets: []float64{.05, .1, .15, .2, .3, .4, .5, .75, 1, 1.5, 2, 3, 5, 10, 30, 60},
 	}, []string{"command", "backend", "status"})
 
 	p.gaugeRunWorkerStateCount = promauto.NewGaugeVec(prometheus.GaugeOpts{

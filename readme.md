@@ -39,7 +39,7 @@ It's helpful to specify some environment variables (e.g. in an `.env` file):
 - `-debug`
 	- enables debug mode (extra logging)
 - `-wp-cli-path` string
-	- path to WP-CLI binary (default "/usr/local/bin/wp"). When not using `-fpm-url`, this is run as a script by `php` (found via `PATH`), so it may also point at an extracted wp-cli tree's `php/boot-fs.php`.
+	- path to WP-CLI binary (default "/usr/local/bin/wp"). Must be directly executable: remote mode runs it as-is, and the non-FPM performer runs it as a script via `php` (found via `PATH`).
 - `-wp-path` string
 	- path to the WordPress installation (default "/var/www/html")
 - `-get-sites-interval` duration

@@ -58,14 +58,15 @@ type siteInfo struct {
 
 // opcacheSettings are passed as `php -d` flags for every non-FPM wp-cli invocation, so each
 // short-lived process loads precompiled opcodes from disk instead of recompiling WordPress and
-// every plugin on every call. Timestamp validation is left at its default, so a changed source
-// file is recompiled and the cache never serves stale code.
+// every plugin on every call. Timestamp validation is pinned on rather than inherited from
+// php.ini, so a changed source file is recompiled and the cache never serves stale code.
 //
 // Note: opcache will not cache a file whose mtime is exactly 0 (it looks like a failed stat), so
 // on images that zero mtimes for reproducible builds those files are compiled on every call.
 var opcacheSettings = []string{
 	"opcache.enable_cli=1",
 	"opcache.file_cache_only=1",
+	"opcache.validate_timestamps=1",
 	// Skip the Adler-32 over every cached file on load. The cache is written once by this same
 	// image and dies with the container, so corruption is not a realistic risk;
 	"opcache.file_cache_consistency_checks=0",
@@ -268,8 +269,7 @@ func (perf *CLI) runWpCmd(command []string) (string, error) {
 }
 
 // wpCommand builds the exec.Cmd for a non-FPM wp-cli invocation: php is run explicitly so the
-// opcache settings can be passed as -d flags, with wpCLIPath as the script (the phar, or an
-// extracted boot-fs.php).
+// opcache settings can be passed as -d flags, with wpCLIPath as the script.
 func (perf *CLI) wpCommand(command []string) *exec.Cmd {
 	args := make([]string, 0, 2*len(perf.phpFlags)+1+len(command))
 	for _, flag := range perf.phpFlags {

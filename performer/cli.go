@@ -30,7 +30,7 @@ type CLI struct {
 	wpCLIPath          string
 	wpPath             string
 	phpPath            string
-	phpFlags           []string // `-d` settings for every non-FPM php invocation, fixed at construction
+	phpFlags           []string // `-d` settings for every non-FPM php invocation, fixed at construction; nil runs wpCLIPath directly
 	metrics            metrics.Manager
 	logger             logger.Logger
 	fpm                gofast.ClientFactory
@@ -55,22 +55,6 @@ type siteInfo struct {
 	Disabled  int    `json:"disabled"`
 }
 
-// opcacheSettings are passed as `php -d` flags for every non-FPM wp-cli invocation, so each
-// short-lived process loads precompiled opcodes from disk instead of recompiling WordPress and
-// every plugin on every call. Timestamp validation is pinned on rather than inherited from
-// php.ini, so a changed source file is recompiled and the cache never serves stale code.
-//
-// Note: opcache will not cache a file whose mtime is exactly 0 (it looks like a failed stat), so
-// on images that zero mtimes for reproducible builds those files are compiled on every call.
-var opcacheSettings = []string{
-	"opcache.enable_cli=1",
-	"opcache.file_cache_only=1",
-	"opcache.validate_timestamps=1",
-	// Skip the Adler-32 over every cached file on load. The cache is written once by this same
-	// image and dies with the container, so corruption is not a realistic risk;
-	"opcache.file_cache_consistency_checks=0",
-}
-
 // phpBinary is resolved from PATH, the same way the wp-cli shebang (#!/usr/bin/env php) does it.
 const phpBinary = "php"
 
@@ -78,31 +62,89 @@ func defaultOpcacheDir() string {
 	return filepath.Join(os.TempDir(), "cron-control-runner-opcache")
 }
 
-// phpFlagsFor returns the `-d` settings for non-FPM invocations: opcacheSettings plus the file
-// cache location.
-func phpFlagsFor(opcacheDir string) []string {
-	return append(append([]string{}, opcacheSettings...), "opcache.file_cache="+opcacheDir)
+// opcachePHPFlags returns the settings passed as `php -d` flags for every non-FPM wp-cli
+// invocation, so each short-lived process loads precompiled opcodes from opcacheDir instead of
+// recompiling WordPress and every plugin on every call. Timestamp validation is pinned on rather
+// than inherited from php.ini, so a changed source file is recompiled and the cache never serves
+// stale code.
+//
+// Note: opcache will not cache a file whose mtime is exactly 0 (it looks like a failed stat), so
+// on images that zero mtimes for reproducible builds those files are compiled on every call.
+func opcachePHPFlags(opcacheDir string) []string {
+	return []string{
+		"opcache.enable_cli=1",
+		"opcache.file_cache_only=1",
+		"opcache.file_cache=" + opcacheDir,
+		"opcache.validate_timestamps=1",
+		// Skip the Adler-32 over every cached file on load. The cache is written once by this same
+		// image and dies with the container, so corruption is not a realistic risk.
+		"opcache.file_cache_consistency_checks=0",
+	}
+}
+
+// isPHPScript reports whether path is a PHP entry point (a phar or script with a php shebang, or a
+// file starting with `<?php`) that can be passed to `php` as the script. Anything else, such as a
+// shell launcher, must be executed directly: php would print its source instead of running it.
+func isPHPScript(path string) (bool, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return false, err
+	}
+	defer f.Close()
+
+	head := make([]byte, 256)
+	n, err := io.ReadFull(f, head)
+	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, io.EOF) {
+		return false, err
+	}
+	firstLine, _, _ := strings.Cut(string(head[:n]), "\n")
+	firstLine = strings.TrimSpace(firstLine)
+
+	if strings.HasPrefix(firstLine, "#!") {
+		// Match the interpreter's basename so "#!/usr/bin/env php" and "#!/usr/bin/php8.2" count,
+		// but "#!/bin/sh" does not.
+		for _, field := range strings.Fields(firstLine[2:]) {
+			if strings.HasPrefix(filepath.Base(field), "php") {
+				return true, nil
+			}
+		}
+		return false, nil
+	}
+	return strings.HasPrefix(firstLine, "<?php"), nil
 }
 
 // NewCLI sets up the CLI Performer w/ special initializations.
 func NewCLI(wpCLIPath string, wpPath string, fpmURL string, fpmResponseTimeout time.Duration, metrics metrics.Manager, logger logger.Logger) *CLI {
-	opcacheDir := defaultOpcacheDir()
 	performer := &CLI{
 		wpCLIPath:          wpCLIPath,
 		wpPath:             wpPath,
 		phpPath:            phpBinary,
-		phpFlags:           phpFlagsFor(opcacheDir),
 		metrics:            metrics,
 		logger:             logger,
 		fpmResponseTimeout: fpmResponseTimeout,
 	}
 
-	if err := os.MkdirAll(opcacheDir, 0o755); err != nil {
-		// Not fatal: php will warn on stderr and run uncached.
-		logger.Errorf("could not create opcache file cache dir %q: %v", opcacheDir, err)
-	}
+	if fpmURL == "" {
+		isPHP, err := isPHPScript(wpCLIPath)
+		if err != nil {
+			logger.Errorf("could not inspect WP-CLI path %q: %v", wpCLIPath, err)
+			panic(err)
+		}
+		if !isPHP {
+			logger.Warningf("Using CLI runtime (%s) without opcache file cache: not a PHP script, so it is executed directly", wpCLIPath)
+			return performer
+		}
 
-	if fpmURL != "" {
+		// Fatal: with opcache.file_cache_only=1, php refuses to start (exit 254) without a usable
+		// cache dir, so every wp-cli call would fail.
+		opcacheDir := defaultOpcacheDir()
+		if err := os.MkdirAll(opcacheDir, 0o755); err != nil {
+			logger.Errorf("could not create opcache file cache dir %q: %v", opcacheDir, err)
+			panic(err)
+		}
+		performer.phpFlags = opcachePHPFlags(opcacheDir)
+		logger.Infof("Using CLI runtime (%s %s) with opcache file cache at %q", phpBinary, wpCLIPath, opcacheDir)
+	} else {
 		var err error
 		parsedURL, err := url.Parse(fpmURL)
 		if err != nil || parsedURL == nil || (parsedURL.Scheme == "unix" && parsedURL.Path == "") || ((parsedURL.Scheme == "tcp" || parsedURL.Scheme == "tcp4" || parsedURL.Scheme == "tcp6") && parsedURL.Host == "") {
@@ -267,8 +309,13 @@ func (perf *CLI) runWpCmd(command []string) (string, error) {
 }
 
 // wpCommand builds the exec.Cmd for a non-FPM wp-cli invocation: php is run explicitly so the
-// opcache settings can be passed as -d flags, with wpCLIPath as the script.
+// opcache settings can be passed as -d flags, with wpCLIPath as the script. Without phpFlags
+// (wpCLIPath is not a PHP script), wpCLIPath is executed directly.
 func (perf *CLI) wpCommand(command []string) *exec.Cmd {
+	if perf.phpFlags == nil {
+		return exec.Command(perf.wpCLIPath, command...)
+	}
+
 	args := make([]string, 0, 2*len(perf.phpFlags)+1+len(command))
 	for _, flag := range perf.phpFlags {
 		args = append(args, "-d", flag)

@@ -1,9 +1,11 @@
 package performer
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -115,17 +117,11 @@ func TestSanitizeJSONInput(t *testing.T) {
 
 func TestGetSiteInfo_EmptyJSONArrayReturnsError(t *testing.T) {
 	tmpDir := t.TempDir()
-	wpCLIPath := filepath.Join(tmpDir, "wp")
-
-	script := "#!/bin/sh\nprintf '[]'\n"
-	if err := os.WriteFile(wpCLIPath, []byte(script), 0755); err != nil {
-		t.Fatalf("failed to write fake wp-cli: %v", err)
-	}
+	wpCLIPath := writeScript(t, tmpDir, "wp", "#!/bin/sh\nprintf '[]'\n")
 
 	perf := &CLI{
 		wpCLIPath: wpCLIPath,
 		wpPath:    tmpDir,
-		phpPath:   fakePHP(t, tmpDir),
 		metrics:   metrics.Mock{},
 		logger:    logger.Logger{Logger: log.New(io.Discard, "", 0)},
 	}
@@ -140,23 +136,64 @@ func TestGetSiteInfo_EmptyJSONArrayReturnsError(t *testing.T) {
 	}
 }
 
-// fakePHP writes a stand-in for the php binary that drops the `-d key=value` pairs and executes
-// the script argument directly, so tests can use shell scripts as fake wp-cli without php installed.
-func fakePHP(t *testing.T, dir string) string {
+// writeScript writes an executable file named name under dir and returns its path.
+func writeScript(t *testing.T, dir, name, content string) string {
 	t.Helper()
-	path := filepath.Join(dir, "php")
-	script := "#!/bin/sh\nwhile [ \"$1\" = \"-d\" ]; do shift 2; done\nexec \"$@\"\n"
-	if err := os.WriteFile(path, []byte(script), 0755); err != nil {
-		t.Fatalf("failed to write fake php: %v", err)
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, []byte(content), 0755); err != nil {
+		t.Fatalf("failed to write %s: %v", name, err)
 	}
 	return path
+}
+
+// requirePHP skips the test unless a real php binary is on PATH.
+func requirePHP(t *testing.T) {
+	t.Helper()
+	if _, err := exec.LookPath(phpBinary); err != nil {
+		t.Skip("php not found on PATH")
+	}
+}
+
+func newTestCLI(t *testing.T, wpCLIPath string) *CLI {
+	t.Helper()
+	return NewCLI(wpCLIPath, t.TempDir(), "", 0, metrics.Mock{}, logger.Logger{Logger: log.New(io.Discard, "", 0)})
+}
+
+func TestIsPHPScript(t *testing.T) {
+	cases := []struct {
+		name    string
+		content string
+		want    bool
+	}{
+		{"phar env shebang", "#!/usr/bin/env php\n<?php\nPhar::mapPhar();", true},
+		{"direct php shebang", "#!/usr/bin/php\n<?php echo 1;", true},
+		{"versioned php shebang", "#!/usr/bin/php8.2\n<?php echo 1;", true},
+		{"php open tag", "<?php\necho 1;", true},
+		{"sh launcher", "#!/bin/sh\nexec php \"$0.phar\" \"$@\"\n", false},
+		{"env sh launcher", "#!/usr/bin/env sh\nphp wp-cli.phar \"$@\"\n", false},
+		{"binary", "\x7fELF\x02\x01\x01", false},
+		{"empty", "", false},
+	}
+	dir := t.TempDir()
+	for i, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			path := writeScript(t, dir, fmt.Sprintf("wp%d", i), tc.content)
+			got, err := isPHPScript(path)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tc.want {
+				t.Fatalf("isPHPScript(%q) = %v, want %v", tc.content, got, tc.want)
+			}
+		})
+	}
 }
 
 func TestWpCommand_RunsPHPWithOpcacheFlags(t *testing.T) {
 	perf := &CLI{
 		wpCLIPath: "/usr/local/bin/wp",
 		phpPath:   "/usr/bin/php",
-		phpFlags:  phpFlagsFor("/tmp/opcache-test"),
+		phpFlags:  opcachePHPFlags("/tmp/opcache-test"),
 	}
 
 	cmd := perf.wpCommand([]string{"option", "get", "home", "--allow-root"})
@@ -167,9 +204,9 @@ func TestWpCommand_RunsPHPWithOpcacheFlags(t *testing.T) {
 	want := []string{
 		"-d", "opcache.enable_cli=1",
 		"-d", "opcache.file_cache_only=1",
+		"-d", "opcache.file_cache=/tmp/opcache-test",
 		"-d", "opcache.validate_timestamps=1",
 		"-d", "opcache.file_cache_consistency_checks=0",
-		"-d", "opcache.file_cache=/tmp/opcache-test",
 		"/usr/local/bin/wp",
 		"option", "get", "home", "--allow-root",
 	}
@@ -179,18 +216,28 @@ func TestWpCommand_RunsPHPWithOpcacheFlags(t *testing.T) {
 }
 
 func TestWpCommand_DefaultsToPHPFromPath(t *testing.T) {
-	perf := &CLI{wpCLIPath: "/usr/local/bin/wp"}
+	perf := &CLI{wpCLIPath: "/usr/local/bin/wp", phpFlags: opcachePHPFlags("/tmp/x")}
 	cmd := perf.wpCommand(nil)
 	if cmd.Args[0] != phpBinary {
 		t.Fatalf("expected %q, got %q", phpBinary, cmd.Args[0])
 	}
 }
 
+func TestWpCommand_ExecutesDirectlyWithoutPHPFlags(t *testing.T) {
+	perf := &CLI{wpCLIPath: "/usr/local/bin/wp", phpPath: "/usr/bin/php"}
+	cmd := perf.wpCommand([]string{"option", "get", "home"})
+	want := []string{"/usr/local/bin/wp", "option", "get", "home"}
+	if strings.Join(cmd.Args, " ") != strings.Join(want, " ") {
+		t.Fatalf("unexpected args:\n got: %v\nwant: %v", cmd.Args, want)
+	}
+}
+
 func TestNewCLI_CreatesOpcacheDirUnderTempDir(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("TMPDIR", tmp)
+	wpCLIPath := writeScript(t, tmp, "wp", "#!/usr/bin/env php\n<?php\n")
 
-	NewCLI("/usr/local/bin/wp", tmp, "", 0, metrics.Mock{}, logger.Logger{Logger: log.New(io.Discard, "", 0)})
+	perf := newTestCLI(t, wpCLIPath)
 
 	dir := defaultOpcacheDir()
 	if !strings.HasPrefix(dir, tmp) {
@@ -200,29 +247,98 @@ func TestNewCLI_CreatesOpcacheDirUnderTempDir(t *testing.T) {
 	if err != nil || !info.IsDir() {
 		t.Fatalf("expected opcache dir to exist: err=%v", err)
 	}
+	if perf.phpFlags == nil {
+		t.Fatal("expected php flags for a PHP entry point")
+	}
 }
 
-func TestProcessCommand_PassesThroughToWpCLI(t *testing.T) {
-	tmpDir := t.TempDir()
-	wpCLIPath := filepath.Join(tmpDir, "wp")
-	// echoes its arguments so we can verify what wp-cli would receive after php strips its -d flags
-	if err := os.WriteFile(wpCLIPath, []byte("#!/bin/sh\nprintf '%s ' \"$@\"\n"), 0755); err != nil {
+func TestNewCLI_PanicsWhenOpcacheDirCannotBeCreated(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+	wpCLIPath := writeScript(t, tmp, "wp", "#!/usr/bin/env php\n<?php\n")
+	// A regular file where the cache dir should go makes MkdirAll fail.
+	if err := os.WriteFile(defaultOpcacheDir(), nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	perf := &CLI{
-		wpCLIPath: wpCLIPath,
-		wpPath:    tmpDir,
-		phpPath:   fakePHP(t, tmpDir),
-		metrics:   metrics.Mock{},
-		logger:    logger.Logger{Logger: log.New(io.Discard, "", 0)},
-	}
 
+	defer func() {
+		if recover() == nil {
+			t.Fatal("expected NewCLI to panic")
+		}
+	}()
+	newTestCLI(t, wpCLIPath)
+}
+
+func TestNewCLI_PanicsWhenWPCLIPathIsUnreadable(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Fatal("expected NewCLI to panic")
+		}
+	}()
+	newTestCLI(t, filepath.Join(t.TempDir(), "missing"))
+}
+
+func TestNewCLI_ShellLauncherSkipsOpcache(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+	wpCLIPath := writeScript(t, tmp, "wp", "#!/bin/sh\nexec php wp-cli.phar \"$@\"\n")
+
+	perf := newTestCLI(t, wpCLIPath)
+
+	if perf.phpFlags != nil {
+		t.Fatalf("expected no php flags for a shell launcher, got %v", perf.phpFlags)
+	}
+	if _, err := os.Stat(defaultOpcacheDir()); !os.IsNotExist(err) {
+		t.Fatalf("expected no opcache dir for a shell launcher: err=%v", err)
+	}
+}
+
+func TestNewCLI_WithFPMSkipsOpcache(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+
+	perf := NewCLI("/usr/local/bin/wp", tmp, "unix:///tmp/php-fpm.sock", 0, metrics.Mock{}, logger.Logger{Logger: log.New(io.Discard, "", 0)})
+
+	if perf.phpFlags != nil {
+		t.Fatalf("expected no php flags with FPM, got %v", perf.phpFlags)
+	}
+	if _, err := os.Stat(defaultOpcacheDir()); !os.IsNotExist(err) {
+		t.Fatalf("expected no opcache dir with FPM: err=%v", err)
+	}
+}
+
+// The next two tests run real php (skipped when it is not installed), since a stand-in would hide
+// how php treats the launcher: a shell script passed to php as the script is printed, not run.
+
+func TestProcessCommand_RealPHP_PHPEntryPointRunsWithOpcache(t *testing.T) {
+	requirePHP(t)
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+	wpCLIPath := writeScript(t, tmp, "wp", "#!/usr/bin/env php\n<?php\necho ini_get('opcache.file_cache'), ' ', implode(' ', array_slice($argv, 1));\n")
+
+	perf := newTestCLI(t, wpCLIPath)
 	out, err := perf.processCommand([]string{"option", "get", "home"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if strings.TrimSpace(out) != "option get home" {
-		t.Fatalf("unexpected wp-cli args: %q", out)
+	if want := defaultOpcacheDir() + " option get home"; strings.TrimSpace(out) != want {
+		t.Fatalf("unexpected output:\n got: %q\nwant: %q", out, want)
+	}
+}
+
+func TestProcessCommand_RealPHP_ShellLauncherIsExecuted(t *testing.T) {
+	requirePHP(t)
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+	wpCLIPath := writeScript(t, tmp, "wp", "#!/bin/sh\nprintf 'EXECUTED %s' \"$*\"\n")
+
+	perf := newTestCLI(t, wpCLIPath)
+	out, err := perf.processCommand([]string{"option", "get", "home"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.TrimSpace(out) != "EXECUTED option get home" {
+		t.Fatalf("expected the launcher to run, got: %q", out)
 	}
 }
 

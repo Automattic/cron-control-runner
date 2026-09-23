@@ -30,7 +30,6 @@ type CLI struct {
 	wpCLIPath          string
 	wpPath             string
 	phpPath            string
-	opcacheDir         string
 	phpFlags           []string // `-d` settings for every non-FPM php invocation, fixed at construction
 	metrics            metrics.Manager
 	logger             logger.Logger
@@ -92,7 +91,6 @@ func NewCLI(wpCLIPath string, wpPath string, fpmURL string, fpmResponseTimeout t
 		wpCLIPath:          wpCLIPath,
 		wpPath:             wpPath,
 		phpPath:            phpBinary,
-		opcacheDir:         opcacheDir,
 		phpFlags:           phpFlagsFor(opcacheDir),
 		metrics:            metrics,
 		logger:             logger,

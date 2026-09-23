@@ -123,12 +123,11 @@ func TestGetSiteInfo_EmptyJSONArrayReturnsError(t *testing.T) {
 	}
 
 	perf := &CLI{
-		wpCLIPath:  wpCLIPath,
-		wpPath:     tmpDir,
-		phpPath:    fakePHP(t, tmpDir),
-		opcacheDir: tmpDir,
-		metrics:    metrics.Mock{},
-		logger:     logger.Logger{Logger: log.New(io.Discard, "", 0)},
+		wpCLIPath: wpCLIPath,
+		wpPath:    tmpDir,
+		phpPath:   fakePHP(t, tmpDir),
+		metrics:   metrics.Mock{},
+		logger:    logger.Logger{Logger: log.New(io.Discard, "", 0)},
 	}
 
 	_, err := perf.getSiteInfo()
@@ -180,7 +179,7 @@ func TestWpCommand_RunsPHPWithOpcacheFlags(t *testing.T) {
 }
 
 func TestWpCommand_DefaultsToPHPFromPath(t *testing.T) {
-	perf := &CLI{wpCLIPath: "/usr/local/bin/wp", opcacheDir: "/tmp/x"}
+	perf := &CLI{wpCLIPath: "/usr/local/bin/wp"}
 	cmd := perf.wpCommand(nil)
 	if cmd.Args[0] != phpBinary {
 		t.Fatalf("expected %q, got %q", phpBinary, cmd.Args[0])
@@ -191,12 +190,13 @@ func TestNewCLI_CreatesOpcacheDirUnderTempDir(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("TMPDIR", tmp)
 
-	perf := NewCLI("/usr/local/bin/wp", tmp, "", 0, metrics.Mock{}, logger.Logger{Logger: log.New(io.Discard, "", 0)})
+	NewCLI("/usr/local/bin/wp", tmp, "", 0, metrics.Mock{}, logger.Logger{Logger: log.New(io.Discard, "", 0)})
 
-	if !strings.HasPrefix(perf.opcacheDir, tmp) {
-		t.Fatalf("expected opcache dir under %q, got %q", tmp, perf.opcacheDir)
+	dir := defaultOpcacheDir()
+	if !strings.HasPrefix(dir, tmp) {
+		t.Fatalf("expected opcache dir under %q, got %q", tmp, dir)
 	}
-	info, err := os.Stat(perf.opcacheDir)
+	info, err := os.Stat(dir)
 	if err != nil || !info.IsDir() {
 		t.Fatalf("expected opcache dir to exist: err=%v", err)
 	}
@@ -210,12 +210,11 @@ func TestProcessCommand_PassesThroughToWpCLI(t *testing.T) {
 		t.Fatal(err)
 	}
 	perf := &CLI{
-		wpCLIPath:  wpCLIPath,
-		wpPath:     tmpDir,
-		phpPath:    fakePHP(t, tmpDir),
-		opcacheDir: tmpDir,
-		metrics:    metrics.Mock{},
-		logger:     logger.Logger{Logger: log.New(io.Discard, "", 0)},
+		wpCLIPath: wpCLIPath,
+		wpPath:    tmpDir,
+		phpPath:   fakePHP(t, tmpDir),
+		metrics:   metrics.Mock{},
+		logger:    logger.Logger{Logger: log.New(io.Discard, "", 0)},
 	}
 
 	out, err := perf.processCommand([]string{"option", "get", "home"})

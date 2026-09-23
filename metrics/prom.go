@@ -26,7 +26,7 @@ type Prom struct {
 	ctrLockerEventsTotal          *prometheus.CounterVec
 	histWpcliStatMaxRSS           *prometheus.HistogramVec
 	histWpcliStatCPUTime          *prometheus.HistogramVec
-	histFpmCallDurationSeconds    *prometheus.HistogramVec
+	histWpcliCallDurationSeconds  *prometheus.HistogramVec
 	gaugeRunWorkerStateCount      *prometheus.GaugeVec
 	gaugeRunWorkerBusyPct         prometheus.Gauge
 	ctrRunWorkersAllBusyHits      prometheus.Counter
@@ -97,15 +97,18 @@ func (p *Prom) RecordRunWorkerStats(currBusy int32, max int32) {
 	}
 }
 
-// RecordFpmTiming track FPM CLI calls.
-func (p *Prom) RecordFpmTiming(isSuccess bool, elapsed time.Duration) {
-	var labels prometheus.Labels
+// RecordWpcliCall tracks the wall time of a single WP-CLI invocation, labeled by the
+// subcommand name (a fixed, bounded set) and the backend that executed it ("fpm" or "cli").
+func (p *Prom) RecordWpcliCall(command string, backend string, isSuccess bool, elapsed time.Duration) {
+	status := "error"
 	if isSuccess {
-		labels = prometheus.Labels{"status": "success"}
-	} else {
-		labels = prometheus.Labels{"status": "error"}
+		status = "success"
 	}
-	p.histFpmCallDurationSeconds.With(labels).Observe(elapsed.Seconds())
+	p.histWpcliCallDurationSeconds.With(prometheus.Labels{
+		"command": command,
+		"backend": backend,
+		"status":  status,
+	}).Observe(elapsed.Seconds())
 }
 
 func (p *Prom) RecordSiteEventLag(url string, oldestEventTs time.Time) {
@@ -194,13 +197,15 @@ func (p *Prom) initializeMetrics() {
 		Buckets:   []float64{.1, .25, .5, 1, 2.5, 5, 10, 30, 60, 90},
 	}, []string{"cpu_mode", "status"})
 
-	p.histFpmCallDurationSeconds = promauto.NewHistogramVec(prometheus.HistogramOpts{
+	p.histWpcliCallDurationSeconds = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: metricNamespace,
-		Subsystem: "fpm_client",
+		Subsystem: "wpcli",
 		Name:      "call_duration_seconds",
-		Help:      "Wall time of full call to backend FPM",
-		Buckets:   prometheus.DefBuckets,
-	}, []string{"status"})
+		Help:      "Wall time of a single WP-CLI invocation, by subcommand and backend (fpm or cli)",
+		// Dense between 0 and 1s, where orchestration calls land (~0.4-0.6s), so a p95 there is not
+		// pinned to a bucket edge; sparse above for the `run` command, which includes the job itself.
+		Buckets: []float64{.05, .1, .15, .2, .3, .4, .5, .75, 1, 1.5, 2, 3, 5, 10, 30, 60},
+	}, []string{"command", "backend", "status"})
 
 	p.gaugeRunWorkerStateCount = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: metricNamespace,

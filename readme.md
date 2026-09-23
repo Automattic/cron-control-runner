@@ -39,7 +39,7 @@ It's helpful to specify some environment variables (e.g. in an `.env` file):
 - `-debug`
 	- enables debug mode (extra logging)
 - `-wp-cli-path` string
-	- path to WP-CLI binary (default "/usr/local/bin/wp")
+	- path to WP-CLI binary (default "/usr/local/bin/wp"). Must be directly executable: remote mode runs it as-is. The non-FPM performer runs a PHP entry point (a phar or script with a php shebang, or a file starting with `<?php`) as a script via `php` (found via `PATH`) with the opcache file cache, and executes anything else, such as a shell launcher, directly without it.
 - `-wp-path` string
 	- path to the WordPress installation (default "/var/www/html")
 - `-get-sites-interval` duration
@@ -79,6 +79,8 @@ Events are processed as soon as possible once in the queue. There are Y (`num-ru
 
 The Performer is an abstraction layer that does the real interaction w/ sites. The orchestrator is unaware how getEvents/runEvents is happening, it just calls on the performer to do the dirty work. This allows the event fetching and running to be done through various means such as WP CLI or REST API, and provides easy mocking. Currently there are just two implementations here: the `Mock` performer (helps feed test data into the orchestrator while testing), and the `CLI` performer (runs the real cron-control CLIs).
 
+Without `-fpm-url`, and when `-wp-cli-path` is a PHP entry point, the `CLI` performer runs every WP-CLI command as `php -d <opcache settings> <wp-cli-path> ...` with an opcache file cache under the OS temp dir (`cron-control-runner-opcache`). Each short-lived process then loads precompiled opcodes from disk instead of recompiling WordPress and every plugin on each call, which roughly halves the cost of a `list-due-batch` on a large codebase. Timestamp validation stays on, so changed files are recompiled automatically; the directory can simply be left to the container's lifetime. The runner exits at startup if it cannot create that directory, since php refuses to start with `opcache.file_cache_only=1` and no usable cache dir.
+
 ### metrics & logger
 
 Helpers for logging and tracking metrics.
@@ -113,5 +115,7 @@ cron_control_runner_run_worker_state_count{state="busy"}
 cron_control_runner_run_worker_state_count{state="idle"}
 cron_control_runner_run_worker_state_count{state="max"}
 
-// TODO: insert RecordFpmTiming() metrics.
+cron_control_runner_wpcli_call_duration_seconds_bucket{command="cron-control orchestrate runner-only run --timestamp=[param] --action=[param] --instance=[param] --url=[param]|...",backend="fpm|cli",status="success|error",le="..."}
+cron_control_runner_wpcli_call_duration_seconds_count{command="...",backend="fpm|cli",status="success|error"}
+cron_control_runner_wpcli_call_duration_seconds_sum{command="...",backend="fpm|cli",status="success|error"}
 ```

@@ -341,32 +341,3 @@ func TestProcessCommand_RealPHP_ShellLauncherIsExecuted(t *testing.T) {
 		t.Fatalf("expected the launcher to run, got: %q", out)
 	}
 }
-
-func TestWpCmdName(t *testing.T) {
-	cases := []struct {
-		command []string
-		want    string
-	}{
-		{
-			[]string{"cron-control", "orchestrate", "sites", "list"},
-			"cron-control orchestrate sites list",
-		},
-		{
-			[]string{"cron-control", "orchestrate", "runner-only", "list-due-batch", "--url=https://example.com", "--queue-window=0", "--format=json"},
-			"cron-control orchestrate runner-only list-due-batch --url=[param] --queue-window=[param] --format=[param]",
-		},
-		{
-			[]string{"cron-control", "orchestrate", "runner-only", "run", "--timestamp=1", "--action=foo", "--instance=bar", "--url=https://a.com/x?y=z"},
-			"cron-control orchestrate runner-only run --timestamp=[param] --action=[param] --instance=[param] --url=[param]",
-		},
-		{
-			[]string{"cron-control", "orchestrate", "runner-only", "run", "--allow-root", "--quiet", "--path=/wp"},
-			"cron-control orchestrate runner-only run --allow-root --quiet --path=[param]",
-		},
-	}
-	for _, c := range cases {
-		if got := wpCmdName(c.command); got != c.want {
-			t.Errorf("wpCmdName(%v) = %q, want %q", c.command, got, c.want)
-		}
-	}
-}

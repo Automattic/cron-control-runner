@@ -186,7 +186,7 @@ func (perf *CLI) GetSites(hbInterval time.Duration) (Sites, error) {
 		// This allows WP to split up large numbers of sites between different hosts.
 		// TODO: Just do this within the "sites list" CLI instead?
 		hbInSeconds := hbInterval / time.Second
-		perf.runWpCmd([]string{"cron-control", "orchestrate", "sites", "heartbeat", fmt.Sprintf("--heartbeat-interval=%d", hbInSeconds)})
+		perf.runWpCmd([]string{"cron-control", "orchestrate", "sites", "heartbeat", fmt.Sprintf("--heartbeat-interval=%d", hbInSeconds)}, "cron-control orchestrate sites heartbeat")
 
 		return perf.getMultisiteSites()
 	}
@@ -199,7 +199,7 @@ func (perf *CLI) GetSites(hbInterval time.Duration) (Sites, error) {
 func (perf *CLI) getMultisiteSites() (Sites, error) {
 	sites := make(Sites)
 
-	raw, err := perf.runWpCmd([]string{"cron-control", "orchestrate", "sites", "list"})
+	raw, err := perf.runWpCmd([]string{"cron-control", "orchestrate", "sites", "list"}, "cron-control orchestrate sites list")
 	if err != nil {
 		return sites, err
 	}
@@ -220,7 +220,7 @@ func (perf *CLI) getMultisiteSites() (Sites, error) {
 }
 
 func (perf *CLI) getSiteInfo() (siteInfo, error) {
-	raw, err := perf.runWpCmd([]string{"cron-control", "orchestrate", "runner-only", "get-info", "--format=json"})
+	raw, err := perf.runWpCmd([]string{"cron-control", "orchestrate", "runner-only", "get-info", "--format=json"}, "cron-control orchestrate runner-only get-info")
 	if err != nil {
 		return siteInfo{}, err
 	}
@@ -241,7 +241,7 @@ func (perf *CLI) getSiteInfo() (siteInfo, error) {
 func (perf *CLI) GetEvents(site Site) ([]Event, error) {
 	var emptyEvents []Event
 
-	raw, err := perf.runWpCmd([]string{"cron-control", "orchestrate", "runner-only", "list-due-batch", fmt.Sprintf("--url=%s", site.URL), "--queue-window=0", "--format=json"})
+	raw, err := perf.runWpCmd([]string{"cron-control", "orchestrate", "runner-only", "list-due-batch", fmt.Sprintf("--url=%s", site.URL), "--queue-window=0", "--format=json"}, "cron-control orchestrate runner-only list-due-batch")
 	if err != nil {
 		return emptyEvents, err
 	}
@@ -263,30 +263,17 @@ func (perf *CLI) RunEvent(event Event) error {
 	command := []string{"cron-control", "orchestrate", "runner-only", "run", fmt.Sprintf("--timestamp=%d", event.Timestamp),
 		fmt.Sprintf("--action=%s", event.Action), fmt.Sprintf("--instance=%s", event.Instance), fmt.Sprintf("--url=%s", event.URL)}
 
-	_, err := perf.runWpCmd(command)
+	_, err := perf.runWpCmd(command, "cron-control orchestrate runner-only run")
 	return err
 }
 
-// wpCmdName returns the metric label for a WP-CLI command: the tokens joined by a space, with
-// the value of every "--flag=value" replaced by "[param]". The variable parts of our commands
-// (site URL, event timestamp/action/instance) are all passed as flag values, so the result is
-// a small, fixed set. Keep it that way: never pass per-site or per-event values positionally.
-func wpCmdName(command []string) string {
-	parts := make([]string, 0, len(command))
-	for _, arg := range command {
-		if strings.HasPrefix(arg, "--") {
-			if flag, _, found := strings.Cut(arg, "="); found {
-				arg = flag + "=[param]"
-			}
-		}
-		parts = append(parts, arg)
-	}
-	return strings.Join(parts, " ")
-}
-
 // runWpCmd executes a WP-CLI command via FPM when configured, otherwise via the local CLI.
-func (perf *CLI) runWpCmd(command []string) (string, error) {
-	name := wpCmdName(command)
+// metricsName is the command label recorded in metrics; it must be a fixed string (never
+// include per-site or per-event values) to keep the label's cardinality bounded.
+func (perf *CLI) runWpCmd(command []string, metricsName string) (string, error) {
+	if metricsName == "" {
+		metricsName = "unknown"
+	}
 	// `--quiet`` included to prevent WP-CLI commands from generating invalid JSON
 	command = append(command, "--allow-root", "--quiet", fmt.Sprintf("--path=%s", perf.wpPath))
 
@@ -304,7 +291,7 @@ func (perf *CLI) runWpCmd(command []string) (string, error) {
 		backend = "cli"
 		result, err = perf.processCommand(command)
 	}
-	perf.metrics.RecordWpcliCall(name, backend, err == nil, time.Since(t0))
+	perf.metrics.RecordWpcliCall(metricsName, backend, err == nil, time.Since(t0))
 	return trimJSONPreamble(result), err
 }
 

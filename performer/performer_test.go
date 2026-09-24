@@ -136,6 +136,62 @@ func TestGetSiteInfo_EmptyJSONArrayReturnsError(t *testing.T) {
 	}
 }
 
+// wpcliCallRecorder is a metrics.Manager that records the command label of every WP-CLI call.
+type wpcliCallRecorder struct {
+	metrics.Mock
+	commands []string
+}
+
+func (r *wpcliCallRecorder) RecordWpcliCall(command string, _ string, _ bool, _ time.Duration) {
+	r.commands = append(r.commands, command)
+}
+
+// TestRunWpCmd_MetricsLabelsAreFixed drives every CLI call site with per-site and per-event
+// values and checks that only the fixed metrics names reach the command label.
+func TestRunWpCmd_MetricsLabelsAreFixed(t *testing.T) {
+	tmpDir := t.TempDir()
+	// get-info reports a multisite so GetSites also runs heartbeat and sites list.
+	wpCLIPath := writeScript(t, tmpDir, "wp", `#!/bin/sh
+if [ "$4" = "get-info" ]; then printf '[{"multisite":1,"siteurl":"https://example.com","disabled":0}]'; else printf '[]'; fi
+`)
+	recorder := &wpcliCallRecorder{}
+	perf := &CLI{
+		wpCLIPath: wpCLIPath,
+		wpPath:    tmpDir,
+		metrics:   recorder,
+		logger:    logger.Logger{Logger: log.New(io.Discard, "", 0)},
+	}
+
+	if _, err := perf.GetSites(time.Minute); err != nil {
+		t.Fatalf("GetSites: %v", err)
+	}
+	for _, url := range []string{"https://a.example.com", "https://b.example.com/sub"} {
+		if _, err := perf.GetEvents(Site{URL: url}); err != nil {
+			t.Fatalf("GetEvents(%s): %v", url, err)
+		}
+		if err := perf.RunEvent(Event{URL: url, Timestamp: int(time.Now().Unix()), Action: "hook_" + url, Instance: "instance_" + url}); err != nil {
+			t.Fatalf("RunEvent(%s): %v", url, err)
+		}
+	}
+	if _, err := perf.runWpCmd([]string{"cron-control", "--url=https://c.example.com"}, ""); err != nil {
+		t.Fatalf("runWpCmd with empty metrics name: %v", err)
+	}
+
+	want := []string{
+		"cron-control orchestrate runner-only get-info",
+		"cron-control orchestrate sites heartbeat",
+		"cron-control orchestrate sites list",
+		"cron-control orchestrate runner-only list-due-batch",
+		"cron-control orchestrate runner-only run",
+		"cron-control orchestrate runner-only list-due-batch",
+		"cron-control orchestrate runner-only run",
+		"unknown",
+	}
+	if strings.Join(recorder.commands, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("recorded command labels:\n%s\nwant:\n%s", strings.Join(recorder.commands, "\n"), strings.Join(want, "\n"))
+	}
+}
+
 // writeScript writes an executable file named name under dir and returns its path.
 func writeScript(t *testing.T, dir, name, content string) string {
 	t.Helper()
@@ -339,34 +395,5 @@ func TestProcessCommand_RealPHP_ShellLauncherIsExecuted(t *testing.T) {
 	}
 	if strings.TrimSpace(out) != "EXECUTED option get home" {
 		t.Fatalf("expected the launcher to run, got: %q", out)
-	}
-}
-
-func TestWpCmdName(t *testing.T) {
-	cases := []struct {
-		command []string
-		want    string
-	}{
-		{
-			[]string{"cron-control", "orchestrate", "sites", "list"},
-			"cron-control orchestrate sites list",
-		},
-		{
-			[]string{"cron-control", "orchestrate", "runner-only", "list-due-batch", "--url=https://example.com", "--queue-window=0", "--format=json"},
-			"cron-control orchestrate runner-only list-due-batch --url=[param] --queue-window=[param] --format=[param]",
-		},
-		{
-			[]string{"cron-control", "orchestrate", "runner-only", "run", "--timestamp=1", "--action=foo", "--instance=bar", "--url=https://a.com/x?y=z"},
-			"cron-control orchestrate runner-only run --timestamp=[param] --action=[param] --instance=[param] --url=[param]",
-		},
-		{
-			[]string{"cron-control", "orchestrate", "runner-only", "run", "--allow-root", "--quiet", "--path=/wp"},
-			"cron-control orchestrate runner-only run --allow-root --quiet --path=[param]",
-		},
-	}
-	for _, c := range cases {
-		if got := wpCmdName(c.command); got != c.want {
-			t.Errorf("wpCmdName(%v) = %q, want %q", c.command, got, c.want)
-		}
 	}
 }

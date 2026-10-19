@@ -89,10 +89,10 @@ func redactArgs(args []string) []string {
 		}
 	}
 
-	// Each ambiguous argument doubles the readings, so past a few, redact everything from the
-	// first one instead.
+	// Each ambiguous argument doubles the readings, so past a few, redact every argument instead: a
+	// secret can sit before the first ambiguous one too.
 	if len(ambiguous) > maxAmbiguousArgs {
-		for i := ambiguous[0]; i < len(out); i++ {
+		for i := range out {
 			out[i] = redacted
 		}
 		return out

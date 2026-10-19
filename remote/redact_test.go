@@ -22,6 +22,7 @@ func TestRedactArgs(t *testing.T) {
 		"non-ASCII config constant": {input: "config set ACMÉ_KEY hunter2", want: "config set ACMÉ_KEY <redacted>"},
 		"option value":              {input: "option update my_key hunter2 --autoload=no", want: "option update my_key <redacted> --autoload=no"},
 		"value after --":            {input: "option update api_secret -- --hunter2", want: "option update api_secret -- <redacted>"},
+		"-- as an argument":         {input: "option update -- hunter2", want: "option update -- <redacted>"},
 		"meta value":                {input: "--url example.com user meta update 5 api_secret hunter2", want: "--url example.com user meta update 5 api_secret <redacted>"},
 		"network meta value":        {input: "network meta update 1 api_secret hunter2", want: "network meta update 1 api_secret <redacted>"},
 		"network option patch":      {input: "site option patch update settings api_key hunter2", want: "site option patch update settings api_key <redacted>"},

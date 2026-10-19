@@ -42,15 +42,17 @@ func redactArgs(args []string) []string {
 
 	positional := make([]int, 0, len(out)) // indexes in out of the positional arguments
 	bareSensitiveFlag := false
-	endOfOptions := false
 	for i := 0; i < len(out); i++ {
-		// Like WP-CLI, treat every argument after "--" as positional, even one starting with "--".
+		// WP-CLI up to 2.12 treats "--" as an ordinary argument, while newer versions treat it as the
+		// end of options. Rather than guess where a secret sits after it, redact everything after it.
 		if out[i] == "--" {
-			endOfOptions = true
-			continue
+			for j := i + 1; j < len(out); j++ {
+				out[j] = redacted
+			}
+			break
 		}
 
-		if endOfOptions || !strings.HasPrefix(out[i], "--") {
+		if !strings.HasPrefix(out[i], "--") {
 			positional = append(positional, i)
 			continue
 		}

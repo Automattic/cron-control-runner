@@ -18,6 +18,7 @@ func TestRedactArgs(t *testing.T) {
 		"config secret":             {input: "wp config set DB_PASSWORD hunter2", want: "wp config set DB_PASSWORD <redacted>"},
 		"custom config key":         {input: "config set API_KEY hunter2", want: "config set API_KEY <redacted>"},
 		"custom config salt":        {input: "config set CUSTOM_SALT hunter2 --type=constant", want: "config set CUSTOM_SALT <redacted> --type=constant"},
+		"custom config password":    {input: "config set SMTP_PASSWORD hunter2", want: "config set SMTP_PASSWORD <redacted>"},
 		"option value":              {input: "option update my_key hunter2 --autoload=no", want: "option update my_key <redacted> --autoload=no"},
 		"meta value":                {input: "--url example.com user meta update 5 api_secret hunter2", want: "--url example.com user meta update 5 api_secret <redacted>"},
 		"db query and the rest":     {input: "db query SELECT 'hunter2' --skip-column-names", want: "db query <redacted>"},

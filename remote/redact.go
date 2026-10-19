@@ -12,9 +12,10 @@ const redacted = "<redacted>"
 // custom commands' flags such as --client_secret, --access-token and --apikey are covered too.
 var sensitiveFlagName = regexp.MustCompile(`(?i)^(?:api|pw|login)$|pass|secret|token|key|credential|salt`)
 
-// secretConfigName matches wp-config constants that hold secrets: DB_PASSWORD and any *_KEY or
-// *_SALT, which covers WordPress's own keys and salts as well as custom ones such as API_KEY.
-var secretConfigName = regexp.MustCompile(`(?i)^(?:DB_PASSWORD|\w+_(?:KEY|SALT))$`)
+// secretConfigName matches wp-config constants that hold secrets: any *_KEY, *_SALT, *_PASSWORD,
+// *_SECRET or *_TOKEN, which covers DB_PASSWORD and WordPress's keys and salts as well as custom
+// constants such as API_KEY.
+var secretConfigName = regexp.MustCompile(`(?i)^\w+_(?:KEY|SALT|PASSWORD|SECRET|TOKEN)$`)
 
 // globalFlagsWithSeparateValue are WP-CLI global flags that may take their value as the next argument.
 var globalFlagsWithSeparateValue = []string{"context", "exec", "http", "path", "require", "ssh", "url", "user"}

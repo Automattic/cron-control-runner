@@ -63,19 +63,22 @@ func redactArgs(args []string) []string {
 		switch {
 		case isSensitiveFlag(name) && hasValue:
 			out[i] = "--" + name + "=" + redacted
-		case isSensitiveFlag(name) && nextIsValue:
-			i++
-			out[i] = redacted
 		case isSensitiveFlag(name):
+			// WP-CLI reads a flag without "=" as a boolean, so the next argument stays positional and
+			// counts for command detection below. It may still be meant as the flag's secret, so it
+			// is redacted from the output.
 			bareSensitiveFlag = true
+			if nextIsValue {
+				out[i+1] = redacted
+			}
 		case nextIsValue && slices.Contains(globalFlagsWithSeparateValue, strings.ToLower(name)):
 			i++
 		}
 	}
 
-	word := func(n int) string {
+	word := func(n int) string { // reads the original arguments, since out may already be redacted
 		if n < len(positional) {
-			return strings.ToLower(out[positional[n]])
+			return strings.ToLower(args[positional[n]])
 		}
 		return ""
 	}

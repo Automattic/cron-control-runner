@@ -27,6 +27,7 @@ func TestRedactArgs(t *testing.T) {
 		"network meta value":        {input: "network meta update 1 api_secret hunter2", want: "network meta update 1 api_secret <redacted>"},
 		"network option patch":      {input: "site option patch update settings api_key hunter2", want: "site option patch update settings api_key <redacted>"},
 		"db query and the rest":     {input: "db query SELECT 'hunter2' --skip-column-names", want: "db query <redacted>"},
+		"boolean sensitive flag":    {input: "db --show-password query SELECT 'hunter2'", want: "db --show-password <redacted> <redacted>"},
 	}
 
 	for name, tc := range tests {

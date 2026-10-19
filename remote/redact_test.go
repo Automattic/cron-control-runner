@@ -19,8 +19,12 @@ func TestRedactArgs(t *testing.T) {
 		"custom config key":         {input: "config set API_KEY hunter2", want: "config set API_KEY <redacted>"},
 		"custom config salt":        {input: "config set CUSTOM_SALT hunter2 --type=constant", want: "config set CUSTOM_SALT <redacted> --type=constant"},
 		"custom config password":    {input: "config set SMTP_PASSWORD hunter2", want: "config set SMTP_PASSWORD <redacted>"},
+		"non-ASCII config constant": {input: "config set ACMÉ_KEY hunter2", want: "config set ACMÉ_KEY <redacted>"},
 		"option value":              {input: "option update my_key hunter2 --autoload=no", want: "option update my_key <redacted> --autoload=no"},
+		"value after --":            {input: "option update api_secret -- --hunter2", want: "option update api_secret -- <redacted>"},
 		"meta value":                {input: "--url example.com user meta update 5 api_secret hunter2", want: "--url example.com user meta update 5 api_secret <redacted>"},
+		"network meta value":        {input: "network meta update 1 api_secret hunter2", want: "network meta update 1 api_secret <redacted>"},
+		"network option patch":      {input: "site option patch update settings api_key hunter2", want: "site option patch update settings api_key <redacted>"},
 		"db query and the rest":     {input: "db query SELECT 'hunter2' --skip-column-names", want: "db query <redacted>"},
 	}
 

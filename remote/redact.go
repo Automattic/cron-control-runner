@@ -12,10 +12,11 @@ const redacted = "<redacted>"
 // custom commands' flags such as --client_secret, --access-token and --apikey are covered too.
 var sensitiveFlagName = regexp.MustCompile(`(?i)^(?:api|pw|login)$|pass|secret|token|key|credential|salt`)
 
-// secretConfigName matches wp-config constants that hold secrets: any *_KEY, *_SALT, *_PASSWORD,
-// *_SECRET or *_TOKEN, which covers DB_PASSWORD and WordPress's keys and salts as well as custom
-// constants such as API_KEY.
-var secretConfigName = regexp.MustCompile(`(?i)^\w+_(?:KEY|SALT|PASSWORD|SECRET|TOKEN)$`)
+// secretConfigName matches wp-config constants that hold secrets: any name ending in _KEY, _SALT,
+// _PASSWORD, _SECRET or _TOKEN, which covers DB_PASSWORD and WordPress's keys and salts as well as
+// custom constants such as API_KEY. The prefix is not restricted, since PHP constant names can be
+// non-ASCII or start with "_".
+var secretConfigName = regexp.MustCompile(`(?i)_(?:KEY|SALT|PASSWORD|SECRET|TOKEN)$`)
 
 // globalFlagsWithSeparateValue are WP-CLI global flags that may take their value as the next argument.
 var globalFlagsWithSeparateValue = []string{"context", "exec", "http", "path", "require", "ssh", "url", "user"}
@@ -41,8 +42,15 @@ func redactArgs(args []string) []string {
 
 	positional := make([]int, 0, len(out)) // indexes in out of the positional arguments
 	bareSensitiveFlag := false
+	endOfOptions := false
 	for i := 0; i < len(out); i++ {
-		if !strings.HasPrefix(out[i], "--") {
+		// Like WP-CLI, treat every argument after "--" as positional, even one starting with "--".
+		if out[i] == "--" {
+			endOfOptions = true
+			continue
+		}
+
+		if endOfOptions || !strings.HasPrefix(out[i], "--") {
 			positional = append(positional, i)
 			continue
 		}
@@ -75,7 +83,7 @@ func redactArgs(args []string) []string {
 		o = 1
 	}
 	command, subcommand, third := word(o), word(o+1), word(o+2)
-	metaCommands := []string{"comment", "post", "site", "term", "user"}
+	metaCommands := []string{"comment", "network", "post", "site", "term", "user"}
 	setActions := []string{"add", "set", "update"}
 	patchActions := []string{"insert", "update"}
 
@@ -111,6 +119,10 @@ func redactArgs(args []string) []string {
 		value = o + 4
 	case command == "site" && subcommand == "option" && slices.Contains(setActions, third):
 		value = o + 4
+	case command == "site" && subcommand == "option" && third == "patch" && slices.Contains(patchActions, word(o+3)):
+		if len(positional) > o+6 {
+			value = len(positional) - 1
+		}
 	}
 
 	if value < 0 || value >= len(positional) {

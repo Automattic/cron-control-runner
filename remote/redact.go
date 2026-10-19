@@ -18,6 +18,9 @@ var sensitiveFlagName = regexp.MustCompile(`(?i)^(?:api|pw|login)$|pass|secret|t
 // non-ASCII or start with "_".
 var secretConfigName = regexp.MustCompile(`(?i)_(?:KEY|SALT|PASSWORD|SECRET|TOKEN)$`)
 
+// maxAmbiguousArgs caps the arguments redactArgs reads both as positional and as a flag's value.
+const maxAmbiguousArgs = 8
+
 // globalFlagsWithSeparateValue are WP-CLI global flags that people may write with their value as
 // the next argument, as in "--url example.com".
 var globalFlagsWithSeparateValue = []string{"context", "exec", "http", "path", "require", "ssh", "url", "user"}
@@ -49,10 +52,10 @@ func redactArgs(args []string) []string {
 
 	// WP-CLI reads a flag without "=" as a boolean, so the argument after it is positional. People
 	// still write "--flag value", though, so a sensitive or global flag may be meant to take the next
-	// argument as its value. Commands are detected under both readings, and a secret found under
-	// either is redacted.
-	var asParsed, asWritten []int // indexes in args of the positional arguments under each reading
-	takenAsValue := -1            // under the "--flag value" reading, the argument a flag takes
+	// argument as its value. Each such argument is ambiguous: commands are detected under every
+	// combination of readings, and a secret found under any of them is redacted.
+	var nonFlags []int  // indexes in args of the arguments WP-CLI reads as positional
+	var ambiguous []int // those of them a preceding flag may be meant to take as its value
 	bareSensitiveFlag := false
 	for i, arg := range args {
 		// WP-CLI up to 2.12 treats "--" as an ordinary argument, while newer versions treat it as the
@@ -65,10 +68,7 @@ func redactArgs(args []string) []string {
 		}
 
 		if !isFlag(arg) {
-			asParsed = append(asParsed, i)
-			if i != takenAsValue {
-				asWritten = append(asWritten, i)
-			}
+			nonFlags = append(nonFlags, i)
 			continue
 		}
 
@@ -82,15 +82,31 @@ func redactArgs(args []string) []string {
 			bareSensitiveFlag = true
 			if nextIsValue {
 				out[i+1] = redacted
-				takenAsValue = i + 1
+				ambiguous = append(ambiguous, i+1)
 			}
 		case nextIsValue && slices.Contains(globalFlagsWithSeparateValue, strings.ToLower(name)):
-			takenAsValue = i + 1
+			ambiguous = append(ambiguous, i+1)
 		}
 	}
 
+	// Each ambiguous argument doubles the readings, so past a few, redact everything from the
+	// first one instead.
+	if len(ambiguous) > maxAmbiguousArgs {
+		for i := ambiguous[0]; i < len(out); i++ {
+			out[i] = redacted
+		}
+		return out
+	}
+
 	truncateAt := -1
-	for _, positional := range [][]int{asParsed, asWritten} {
+	for taken := 0; taken < 1<<len(ambiguous); taken++ { // bit j set: ambiguous[j] is a flag's value
+		positional := make([]int, 0, len(nonFlags))
+		for _, i := range nonFlags {
+			if j := slices.Index(ambiguous, i); j < 0 || taken&(1<<j) == 0 {
+				positional = append(positional, i)
+			}
+		}
+
 		i, remainder := secretArg(args, positional, bareSensitiveFlag)
 		if i < 0 {
 			continue

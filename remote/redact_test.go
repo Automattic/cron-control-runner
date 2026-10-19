@@ -31,6 +31,8 @@ func TestRedactArgs(t *testing.T) {
 		"empty flag name":           {input: "config set DB_PASSWORD --=hunter2", want: "config set DB_PASSWORD <redacted>"},
 		"global flag before value":  {input: "config set DB_PASSWORD --url hunter2", want: "config set DB_PASSWORD --url <redacted>"},
 		"global flag in command":    {input: "db --user query SELECT 'hunter2'", want: "db --user query <redacted>"},
+		"mixed flag readings":       {input: "--url example.com db --show-password query SELECT 'hunter2'", want: "--url example.com db --show-password <redacted> <redacted>"},
+		"too many ambiguous flags":  {input: strings.Repeat("--url x ", 9) + "option update k hunter2", want: "--url " + strings.Repeat("<redacted> ", 21)},
 	}
 
 	for name, tc := range tests {

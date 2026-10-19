@@ -28,6 +28,9 @@ func TestRedactArgs(t *testing.T) {
 		"network option patch":      {input: "site option patch update settings api_key hunter2", want: "site option patch update settings api_key <redacted>"},
 		"db query and the rest":     {input: "db query SELECT 'hunter2' --skip-column-names", want: "db query <redacted>"},
 		"boolean sensitive flag":    {input: "db --show-password query SELECT 'hunter2'", want: "db --show-password <redacted> <redacted>"},
+		"empty flag name":           {input: "config set DB_PASSWORD --=hunter2", want: "config set DB_PASSWORD <redacted>"},
+		"global flag before value":  {input: "config set DB_PASSWORD --url hunter2", want: "config set DB_PASSWORD --url <redacted>"},
+		"global flag in command":    {input: "db --user query SELECT 'hunter2'", want: "db --user query <redacted>"},
 	}
 
 	for name, tc := range tests {

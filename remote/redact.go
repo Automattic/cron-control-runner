@@ -18,8 +18,15 @@ var sensitiveFlagName = regexp.MustCompile(`(?i)^(?:api|pw|login)$|pass|secret|t
 // non-ASCII or start with "_".
 var secretConfigName = regexp.MustCompile(`(?i)_(?:KEY|SALT|PASSWORD|SECRET|TOKEN)$`)
 
-// globalFlagsWithSeparateValue are WP-CLI global flags that may take their value as the next argument.
+// globalFlagsWithSeparateValue are WP-CLI global flags that people may write with their value as
+// the next argument, as in "--url example.com".
 var globalFlagsWithSeparateValue = []string{"context", "exec", "http", "path", "require", "ssh", "url", "user"}
+
+// isFlag reports whether WP-CLI reads arg as a flag: "--" followed by a name that doesn't start
+// with "=". Anything else, "--=value" included, is a positional argument.
+func isFlag(arg string) bool {
+	return len(arg) > 2 && strings.HasPrefix(arg, "--") && arg[2] != '='
+}
 
 func isSensitiveFlag(name string) bool {
 	if sensitiveFlagName.MatchString(name) {
@@ -40,43 +47,72 @@ func isSensitiveFlag(name string) bool {
 func redactArgs(args []string) []string {
 	out := slices.Clone(args)
 
-	positional := make([]int, 0, len(out)) // indexes in out of the positional arguments
+	// WP-CLI reads a flag without "=" as a boolean, so the argument after it is positional. People
+	// still write "--flag value", though, so a sensitive or global flag may be meant to take the next
+	// argument as its value. Commands are detected under both readings, and a secret found under
+	// either is redacted.
+	var asParsed, asWritten []int // indexes in args of the positional arguments under each reading
+	takenAsValue := -1            // under the "--flag value" reading, the argument a flag takes
 	bareSensitiveFlag := false
-	for i := 0; i < len(out); i++ {
+	for i, arg := range args {
 		// WP-CLI up to 2.12 treats "--" as an ordinary argument, while newer versions treat it as the
 		// end of options. Rather than guess where a secret sits after it, redact everything after it.
-		if out[i] == "--" {
+		if arg == "--" {
 			for j := i + 1; j < len(out); j++ {
 				out[j] = redacted
 			}
 			break
 		}
 
-		if !strings.HasPrefix(out[i], "--") {
-			positional = append(positional, i)
+		if !isFlag(arg) {
+			asParsed = append(asParsed, i)
+			if i != takenAsValue {
+				asWritten = append(asWritten, i)
+			}
 			continue
 		}
 
-		name, _, hasValue := strings.Cut(out[i][2:], "=")
-		nextIsValue := !hasValue && i+1 < len(out) && !strings.HasPrefix(out[i+1], "--")
+		name, _, hasValue := strings.Cut(arg[2:], "=")
+		nextIsValue := !hasValue && i+1 < len(args) && args[i+1] != "--" && !isFlag(args[i+1])
 
 		switch {
 		case isSensitiveFlag(name) && hasValue:
 			out[i] = "--" + name + "=" + redacted
 		case isSensitiveFlag(name):
-			// WP-CLI reads a flag without "=" as a boolean, so the next argument stays positional and
-			// counts for command detection below. It may still be meant as the flag's secret, so it
-			// is redacted from the output.
 			bareSensitiveFlag = true
 			if nextIsValue {
 				out[i+1] = redacted
+				takenAsValue = i + 1
 			}
 		case nextIsValue && slices.Contains(globalFlagsWithSeparateValue, strings.ToLower(name)):
-			i++
+			takenAsValue = i + 1
 		}
 	}
 
-	word := func(n int) string { // reads the original arguments, since out may already be redacted
+	truncateAt := -1
+	for _, positional := range [][]int{asParsed, asWritten} {
+		i, remainder := secretArg(args, positional, bareSensitiveFlag)
+		if i < 0 {
+			continue
+		}
+		if !remainder {
+			out[i] = redacted
+		} else if truncateAt < 0 || i < truncateAt {
+			truncateAt = i
+		}
+	}
+
+	if truncateAt >= 0 {
+		return append(out[:truncateAt], redacted)
+	}
+	return out
+}
+
+// secretArg returns the index in args of the positional argument that holds a secret for the
+// command args run, or -1. remainder reports that the secret runs to the end of args, as an SQL
+// query does.
+func secretArg(args []string, positional []int, bareSensitiveFlag bool) (index int, remainder bool) {
+	word := func(n int) string {
 		if n < len(positional) {
 			return strings.ToLower(args[positional[n]])
 		}
@@ -93,7 +129,6 @@ func redactArgs(args []string) []string {
 	patchActions := []string{"insert", "update"}
 
 	value := -1 // index in positional of the secret value
-	redactRemainder := false
 	switch {
 	case command == "config" && subcommand == "set" && secretConfigName.MatchString(third):
 		value = o + 3
@@ -101,7 +136,7 @@ func redactArgs(args []string) []string {
 		value = o + 3
 	case command == "db" && subcommand == "query":
 		value = o + 2
-		redactRemainder = true
+		remainder = true
 	case command == "user" && subcommand == "check-password":
 		value = o + 3
 	case command == "option" && slices.Contains(setActions, subcommand):
@@ -131,13 +166,7 @@ func redactArgs(args []string) []string {
 	}
 
 	if value < 0 || value >= len(positional) {
-		return out
+		return -1, false
 	}
-
-	if redactRemainder {
-		return append(out[:positional[value]], redacted)
-	}
-
-	out[positional[value]] = redacted
-	return out
+	return positional[value], remainder
 }

@@ -702,14 +702,16 @@ func runWpCliCmdRemote(conn net.Conn, GUID string, rows uint16, cols uint16, wpC
 	cmdArgs = append(cmdArgs, strings.Fields("--path="+remoteConfig.wpPath)...)
 
 	cleanArgs := getCleanWpCliArgumentArray(wpCliCmdString)
-	log.Printf("LOG CLI Arguments (%d elements): %s", len(cleanArgs), strings.Join(cleanArgs, ", "))
+	// Never log the raw arguments: they can contain secrets, and these logs are shipped to customers.
+	loggedArgs := redactArgs(cleanArgs)
+	log.Printf("LOG CLI Arguments (%d elements): %s", len(cleanArgs), strings.Join(loggedArgs, ", "))
 
 	cmdArgs = append(cmdArgs, cleanArgs...)
 
 	cmd := exec.Command(remoteConfig.wpCLIPath, cmdArgs...)
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color", "LESSSECURE=1")
 
-	log.Printf("launching %s - rows: %d, cols: %d, args: %s\n", GUID, rows, cols, strings.Join(cmdArgs, " "))
+	log.Printf("launching %s - rows: %d, cols: %d, args: --path=%s %s\n", GUID, rows, cols, remoteConfig.wpPath, strings.Join(loggedArgs, " "))
 
 	logFileName := fmt.Sprintf("/tmp/wp-cli-%s", GUID)
 
@@ -1073,7 +1075,5 @@ func tokenizeString(rawString string) []string {
 		prevRune = r
 		return !quoted && unicode.IsSpace(r)
 	})
-	out := strings.Join(tokenized, ", ")
-	log.Printf("LOG: %s", out)
 	return tokenized
 }
